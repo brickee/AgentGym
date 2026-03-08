@@ -36,6 +36,7 @@ python3 scripts/summarize_benchmark.py
 - Communication metrics are event-level runtime counters:
   - `communication_event_count`
   - `communication_cost`
+- Summary report now includes policy deltas (vs independent) and scenario deltas (vs baseline).
 
 ## Status
 M1/M2 simulator + baseline evaluation active with scenario-aware duplicate-work and communication-cost metrics.

@@ -162,3 +162,15 @@
 - `PYTHONPATH=src python3 scripts/smoke_check.py` -> `SMOKE_CHECK_OK`
 - `PYTHONPATH=src python3 scripts/run_benchmark.py` -> `BENCHMARK_OK`
 - `python3 scripts/summarize_benchmark.py` -> `SUMMARY_OK`
+
+## 2026-03-08 (Autopilot sprint — scenario delta reporting)
+- Extended `scripts/summarize_benchmark.py` with comparative delta sections:
+  - policy deltas vs independent within each scenario
+  - scenario deltas vs baseline within each policy
+- Kept output deterministic and CSV-driven (no hidden state), while preserving existing aggregate table.
+- Regenerated `artifacts/benchmark_v0_summary.md` with deltas to support faster policy/scenario sensitivity reads.
+
+### Validation
+- `PYTHONPATH=src python3 scripts/smoke_check.py` -> `SMOKE_CHECK_OK`
+- `PYTHONPATH=src python3 scripts/run_benchmark.py` -> `BENCHMARK_OK`
+- `python3 scripts/summarize_benchmark.py` -> `SUMMARY_OK`

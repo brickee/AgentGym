@@ -6,6 +6,24 @@ CSV_PATH = Path("artifacts/benchmark_v0.csv")
 OUT_MD = Path("artifacts/benchmark_v0_summary.md")
 
 
+def _means(v):
+    n = max(1, int(v["n"]))
+    return {
+        "events": v["events"] / n,
+        "lat": v["lat"] / n,
+        "protocol_retry": v["protocol_retry"] / n,
+        "semantic_dup": v["semantic_dup"] / n,
+        "comm_events": v["comm_events"] / n,
+        "comm_cost": v["comm_cost"] / n,
+        "mem_w": v["mem_w"] / n,
+        "mem_r": v["mem_r"] / n,
+        "mem_i": v["mem_i"] / n,
+        "mem_hit": v["mem_hit"] / n,
+        "mem_miss": v["mem_miss"] / n,
+        "mem_stale": v["mem_stale"] / n,
+    }
+
+
 def main():
     agg = defaultdict(lambda: {
         "n": 0,
@@ -40,17 +58,53 @@ def main():
             agg[k]["mem_miss"] += float(row.get("memory_miss_count", 0.0))
             agg[k]["mem_stale"] += float(row.get("memory_stale_read_count", 0.0))
 
+    mean_by_key = {k: _means(v) for k, v in agg.items()}
+    scenarios = sorted({k[0] for k in agg})
+    policies = sorted({k[1] for k in agg})
+
     lines = [
         "# Benchmark v0 Summary",
         "",
         "| scenario | policy | avg_events | avg_completion_time | avg_protocol_retries | avg_semantic_duplicates | avg_comm_events | avg_comm_cost | avg_mem_w/r/i | avg_mem_hit/miss/stale |",
         "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
-    for (scenario, policy), v in sorted(agg.items()):
-        n = v["n"]
-        lines.append(
-            f"| {scenario} | {policy} | {v['events']/n:.2f} | {v['lat']/n:.4f} | {v['protocol_retry']/n:.2f} | {v['semantic_dup']/n:.2f} | {v['comm_events']/n:.2f} | {v['comm_cost']/n:.2f} | {v['mem_w']/n:.2f}/{v['mem_r']/n:.2f}/{v['mem_i']/n:.2f} | {v['mem_hit']/n:.2f}/{v['mem_miss']/n:.2f}/{v['mem_stale']/n:.2f} |"
-        )
+    for scenario in scenarios:
+        for policy in policies:
+            m = mean_by_key[(scenario, policy)]
+            lines.append(
+                f"| {scenario} | {policy} | {m['events']:.2f} | {m['lat']:.4f} | {m['protocol_retry']:.2f} | {m['semantic_dup']:.2f} | {m['comm_events']:.2f} | {m['comm_cost']:.2f} | {m['mem_w']:.2f}/{m['mem_r']:.2f}/{m['mem_i']:.2f} | {m['mem_hit']:.2f}/{m['mem_miss']:.2f}/{m['mem_stale']:.2f} |"
+            )
+
+    lines.extend([
+        "",
+        "## Policy deltas vs independent (within each scenario)",
+        "",
+        "| scenario | policy | Δcompletion_time | Δprotocol_retries | Δsemantic_duplicates |",
+        "|---|---|---:|---:|---:|",
+    ])
+    for scenario in scenarios:
+        base = mean_by_key[(scenario, "independent")]
+        for policy in [p for p in policies if p != "independent"]:
+            m = mean_by_key[(scenario, policy)]
+            lines.append(
+                f"| {scenario} | {policy} | {m['lat'] - base['lat']:+.4f} | {m['protocol_retry'] - base['protocol_retry']:+.2f} | {m['semantic_dup'] - base['semantic_dup']:+.2f} |"
+            )
+
+    lines.extend([
+        "",
+        "## Scenario deltas vs baseline (within each policy)",
+        "",
+        "| policy | scenario | Δcompletion_time | Δprotocol_retries | Δsemantic_duplicates |",
+        "|---|---|---:|---:|---:|",
+    ])
+    non_baseline = [s for s in scenarios if s != "baseline"]
+    for policy in policies:
+        base = mean_by_key[("baseline", policy)]
+        for scenario in non_baseline:
+            m = mean_by_key[(scenario, policy)]
+            lines.append(
+                f"| {policy} | {scenario} | {m['lat'] - base['lat']:+.4f} | {m['protocol_retry'] - base['protocol_retry']:+.2f} | {m['semantic_dup'] - base['semantic_dup']:+.2f} |"
+            )
 
     OUT_MD.write_text("\n".join(lines), encoding="utf-8")
     print(f"SUMMARY_OK {OUT_MD}")
