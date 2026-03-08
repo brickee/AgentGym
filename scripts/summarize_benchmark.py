@@ -4,6 +4,30 @@ from pathlib import Path
 
 CSV_PATH = Path("artifacts/benchmark_v0.csv")
 OUT_MD = Path("artifacts/benchmark_v0_summary.md")
+REQUIRED_COLUMNS = {
+    "schema_version",
+    "scenario",
+    "policy",
+    "seed",
+    "tasks",
+    "events_processed",
+    "task_success_rate",
+    "avg_completion_time",
+    "protocol_retry_count",
+    "semantic_duplicate_work_count",
+    "communication_event_count",
+    "communication_cost",
+    "retry_count",
+    "duplicate_tool_calls",
+    "memory_write_count",
+    "memory_read_count",
+    "memory_invalidate_count",
+    "memory_hit_count",
+    "memory_miss_count",
+    "memory_stale_read_count",
+    "memory_low_confidence_read_count",
+    "sim_end_time",
+}
 
 
 def _means(v):
@@ -41,8 +65,15 @@ def main():
         "mem_stale": 0.0,
     })
 
+    schema_versions = set()
     with CSV_PATH.open("r", encoding="utf-8") as f:
-        for row in csv.DictReader(f):
+        reader = csv.DictReader(f)
+        header = set(reader.fieldnames or [])
+        missing = sorted(REQUIRED_COLUMNS - header)
+        if missing:
+            raise ValueError(f"benchmark schema missing columns: {missing}")
+        for row in reader:
+            schema_versions.add(str(row.get("schema_version", "")))
             k = (row["scenario"], row["policy"])
             agg[k]["n"] += 1
             agg[k]["events"] += float(row["events_processed"])
@@ -64,6 +95,8 @@ def main():
 
     lines = [
         "# Benchmark v0 Summary",
+        "",
+        f"Schema versions: {', '.join(sorted(v for v in schema_versions if v))}",
         "",
         "| scenario | policy | avg_events | avg_completion_time | avg_protocol_retries | avg_semantic_duplicates | avg_comm_events | avg_comm_cost | avg_mem_w/r/i | avg_mem_hit/miss/stale |",
         "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|",

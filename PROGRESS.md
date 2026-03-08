@@ -190,3 +190,14 @@
 - `PYTHONPATH=src python3 scripts/run_benchmark.py` -> `BENCHMARK_OK`
 - `python3 scripts/summarize_benchmark.py` -> `SUMMARY_OK`
 - `make ci` -> smoke passed, pytest gracefully skipped when unavailable
+
+## 2026-03-08 (Autopilot sprint — benchmark schema/version guardrails)
+- Added explicit benchmark schema contract in runner (`BENCHMARK_SCHEMA_VERSION`, `BENCHMARK_COLUMNS`).
+- CSV writer now enforces stable column ordering instead of deriving columns from row dict order.
+- Added schema validation in summary script to fail fast on missing columns.
+- Summary now reports observed schema version(s) from the benchmark artifact.
+
+### Validation
+- `PYTHONPATH=src python3 scripts/smoke_check.py` -> `SMOKE_CHECK_OK`
+- `PYTHONPATH=src python3 scripts/run_benchmark.py` -> `BENCHMARK_OK`
+- `python3 scripts/summarize_benchmark.py` -> `SUMMARY_OK`

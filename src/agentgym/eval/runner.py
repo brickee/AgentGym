@@ -16,6 +16,32 @@ POLICIES = {
     "shared_memory": SharedMemoryPolicy,
 }
 
+BENCHMARK_SCHEMA_VERSION = "1.0"
+BENCHMARK_COLUMNS = [
+    "schema_version",
+    "scenario",
+    "policy",
+    "seed",
+    "tasks",
+    "events_processed",
+    "task_success_rate",
+    "avg_completion_time",
+    "protocol_retry_count",
+    "semantic_duplicate_work_count",
+    "communication_event_count",
+    "communication_cost",
+    "retry_count",
+    "duplicate_tool_calls",
+    "memory_write_count",
+    "memory_read_count",
+    "memory_invalidate_count",
+    "memory_hit_count",
+    "memory_miss_count",
+    "memory_stale_read_count",
+    "memory_low_confidence_read_count",
+    "sim_end_time",
+]
+
 
 @dataclass
 class RunConfig:
@@ -99,6 +125,7 @@ def run_once(cfg: RunConfig) -> Dict:
 
     processed = sim.run(max_events=5000)
     return {
+        "schema_version": BENCHMARK_SCHEMA_VERSION,
         "scenario": cfg.scenario,
         "policy": cfg.policy_name,
         "seed": cfg.seed,
@@ -133,7 +160,8 @@ def run_benchmark(out_csv: str = "artifacts/benchmark_v0.csv"):
     p = Path(out_csv)
     p.parent.mkdir(parents=True, exist_ok=True)
     with p.open("w", newline="", encoding="utf-8") as f:
-        w = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
+        w = csv.DictWriter(f, fieldnames=BENCHMARK_COLUMNS)
         w.writeheader()
-        w.writerows(rows)
+        for row in rows:
+            w.writerow({k: row.get(k) for k in BENCHMARK_COLUMNS})
     return str(p)
