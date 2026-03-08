@@ -14,7 +14,21 @@ def test_validator_tool_lifecycle():
 
 def test_allocator_basic_contention():
     a = ResourceAllocator({"r1": 1}, {"search": ["r1"]})
-    ok, _ = a.allocate("search")
+    ok, _, _ = a.allocate("search", now=0.0)
     assert ok
-    ok2, _ = a.allocate("search")
-    assert not ok2
+    ok2, _, tag = a.allocate("search", now=0.0)
+    assert (not ok2) and tag.startswith("wait:")
+
+
+def test_allocator_rate_limit_retry_policy():
+    a = ResourceAllocator(
+        {"r1": 1},
+        {"search": ["r1"]},
+        tool_rate_limits={"search": 1.0},
+        backpressure_policy="retry",
+    )
+    ok, held, _ = a.allocate("search", now=0.0)
+    assert ok
+    a.release(held)
+    ok2, _, tag = a.allocate("search", now=0.0)
+    assert (not ok2) and tag.startswith("retry:rate_limited")

@@ -17,13 +17,25 @@ def main():
         resource_config={"api_search": 1, "compute_slot": 1, "db_lock": 1},
         tool_requirements={"search": ["api_search"], "compute": ["compute_slot"]},
     )
-    ok, resources = allocator.allocate("search")
-    assert ok and resources == ["api_search"], "allocator failed on first allocation"
-    ok2, _ = allocator.allocate("search")
-    assert not ok2, "allocator should enforce capacity"
+    ok, resources, tag = allocator.allocate("search", now=0.0)
+    assert ok and resources == ["api_search"] and tag == "allocated", "allocator failed on first allocation"
+    ok2, _, tag2 = allocator.allocate("search", now=0.0)
+    assert (not ok2) and tag2.startswith("wait:"), "allocator should enforce capacity"
     allocator.release(resources)
-    ok3, _ = allocator.allocate("search")
+    ok3, _, _ = allocator.allocate("search", now=0.0)
     assert ok3, "allocator release path failed"
+
+    rate_alloc = ResourceAllocator(
+        resource_config={"api_search": 1},
+        tool_requirements={"search": ["api_search"]},
+        tool_rate_limits={"search": 1.0},
+        backpressure_policy="retry",
+    )
+    ok4, held, _ = rate_alloc.allocate("search", now=0.0)
+    assert ok4
+    rate_alloc.release(held)
+    ok5, _, tag5 = rate_alloc.allocate("search", now=0.0)
+    assert (not ok5) and tag5.startswith("retry:rate_limited")
 
     world = make_mvp_world()
     sim = Simulator(world, enable_replay=True)

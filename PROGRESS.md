@@ -34,3 +34,13 @@
 ### Decisions
 - Fail fast on invalid event transitions (raise immediately) to prevent silent corruption.
 - Keep replay format JSONL for cheap append + easy downstream analytics.
+
+## 2026-03-08 (Next phase kickoff)
+- Updated positioning to organization-level simulator in `README.md` and `PLAN.md`.
+- Implemented token-bucket-based per-tool rate-limit support in allocator.
+- Added backpressure policy responses: `wait`, `drop`, `retry`.
+- Extended smoke check to cover rate-limited retry behavior.
+
+### Decisions
+- Keep backpressure policy in allocator first (single source), later expose to scenario config.
+- Use explicit reject tags (`wait:*`, `retry:*`, `dropped:*`) for deterministic downstream event mapping.

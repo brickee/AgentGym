@@ -1,7 +1,7 @@
 # Multi-Agent Coordination Simulator — PLAN
 
 ## North Star
-Build a discrete-event multi-agent coordination simulator for shared tools/resources, with clear MVP metrics and training hooks (RL/GEPA/MARTI).
+Build a discrete-event multi-agent **organization simulator** for shared tools/resources, where contention, collaboration, and team governance are first-class, with clear MVP metrics and training hooks (RL/GEPA/MARTI).
 
 ## Milestones
 
@@ -27,6 +27,7 @@ Build a discrete-event multi-agent coordination simulator for shared tools/resou
 ### M3 — Research Extensions (Week 2+)
 - [ ] Shared tool ecosystem (dependency/failure/cost)
 - [ ] Memory as first-class resource (private/shared/team)
+- [ ] Organization layer (hierarchy/market/decentralized team policies)
 - [ ] RL/GEPA/MARTI interfaces
 - [ ] Benchmark packaging
 

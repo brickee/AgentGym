@@ -1,9 +1,14 @@
 # AgentGym
 
-A discrete-event simulator for multi-agent coordination under shared resource contention.
+A discrete-event simulator for multi-agent organization, coordination, and adaptation under shared resource contention.
 
 ## Goal
-AgentGym studies how multi-agent systems coordinate when tools are rate-limited, resources are scarce, memory is shared, and events are asynchronous.
+AgentGym studies not only resource contention, but also multi-agent **organization design**: team structures, delegation patterns, communication protocols, and memory-sharing strategies under realistic async constraints.
+
+It targets three axes together:
+- **Competition**: quota/slot/lock contention
+- **Coordination**: task decomposition, messaging, and handoffs
+- **Organization**: hierarchy vs decentralized teams, policy governance, and adaptation
 
 ## MVP Scope
 - 5 agents, 20 tasks, 3 tools (`search`, `compute`, `database`)
