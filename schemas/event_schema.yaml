@@ -1,0 +1,56 @@
+version: 0.1
+principles:
+  - deterministic_ordering: "Events are ordered by (time, priority, seq_id)."
+  - explicit_lifecycle: "Requests must pass through start/finish or fail/timeout paths."
+  - idempotent_release: "Resource release is safe under retries."
+
+event_envelope:
+  required:
+    - event_id
+    - event_type
+    - sim_time
+    - priority
+    - seq_id
+    - actor_id
+    - correlation_id
+  fields:
+    event_id: "uuid"
+    event_type: "enum"
+    sim_time: "float_seconds"
+    priority: "int (lower=earlier)"
+    seq_id: "monotonic int"
+    actor_id: "agent or system id"
+    correlation_id: "task/run correlation key"
+    payload: "dict"
+
+event_types:
+  - task_created
+  - task_assigned
+  - tool_requested
+  - tool_started
+  - tool_finished
+  - tool_failed
+  - retry_scheduled
+  - resource_acquired
+  - resource_released
+  - message_sent
+  - memory_read
+  - memory_write
+  - task_completed
+  - task_failed
+
+transitions:
+  tool_lifecycle:
+    from: tool_requested
+    to_any_of: [tool_started, tool_failed, retry_scheduled]
+  running_tool:
+    from: tool_started
+    to_any_of: [tool_finished, tool_failed, task_failed]
+  resource_guard:
+    from: resource_acquired
+    to: resource_released
+
+invariants:
+  - "resource_acquired count must equal resource_released count per (tool_id, holder_id) at simulation end"
+  - "task_completed xor task_failed for each task_id"
+  - "no event can reference unknown agent/task/tool ids"

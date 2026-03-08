@@ -11,5 +11,16 @@
 - Use concise daily reporting format for continuity.
 
 ### Blockers
-- Need target GitHub repo URL + push permissions confirmation.
-- Need preferred branch strategy (main-only vs feature branches).
+- Local test environment does not include pytest; temporary smoke checks run via `PYTHONPATH=src python3 scripts/smoke_check.py`.
+- Need to add CI/test runner convention in next iteration.
+
+## 2026-03-08 (Day 1 — iteration 1)
+- Added `event_schema.yaml` and `world_state_schema.yaml`.
+- Implemented minimal simulator core (`Event`, `WorldState`, `Simulator`).
+- Added MVP world builder and baseline policy stub.
+- Added smoke checks and validated run path.
+- Wrote self-review notes for scaling/abstraction/reproducibility risks.
+
+### Decisions
+- Keep deterministic event ordering contract explicit: `(time, priority, seq_id)`.
+- Prioritize transition validation + allocator abstraction in Day 2.

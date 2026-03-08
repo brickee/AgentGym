@@ -1,0 +1,15 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agentgym"
+version = "0.1.0"
+description = "Discrete-event simulator for multi-agent coordination under shared resource contention"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{name = "brickee"}]
+dependencies = []
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -1,10 +1,10 @@
 # NEXT TODO
 
 ## Immediate (next session)
-1. Finalize `event_schema.yaml` with event lifecycle constraints.
-2. Define `world_state_schema.yaml` for agents/tasks/tools/resources/memory.
-3. Scaffold Python package (`src/sim_core`, `src/policies`, `src/eval`, `tests`).
+1. Add transition validator module enforcing event lifecycle constraints.
+2. Implement resource allocator abstraction (`tools -> resources`) and contention handling.
+3. Add replay/event-log artifact for deterministic reruns.
 
-## Pending user input
-- GitHub repo URL for daily commits.
-- Preferred default branch + commit granularity.
+## Quality tasks
+- Add `make smoke` or equivalent command (no external deps).
+- Add CI-friendly test path (install + run) to avoid `PYTHONPATH` friction.

@@ -1,0 +1,64 @@
+version: 0.1
+world_state:
+  sim:
+    current_time: float
+    seed: int
+    status: [idle, running, done]
+
+  agents:
+    key: agent_id
+    fields:
+      role: string
+      policy_id: string
+      inbox_size: int
+      busy_until: float
+      stats:
+        tasks_completed: int
+        tool_calls: int
+        duplicate_calls: int
+
+  tasks:
+    key: task_id
+    fields:
+      status: [pending, assigned, in_progress, done, failed]
+      owner_agent_id: string|null
+      required_tools: [string]
+      created_at: float
+      deadline: float|null
+      metadata: dict
+
+  tools:
+    key: tool_id
+    fields:
+      latency_seconds: float
+      capacity: int
+      rate_limit_per_sec: float
+      failure_rate: float
+      queue:
+        max_length: int
+        waiting_request_ids: [string]
+
+  resources:
+    key: resource_id
+    fields:
+      type: [api_quota, compute_slot, db_lock, memory_bw]
+      total_units: int
+      used_units: int
+      waiting_holders: [string]
+
+  memory:
+    private: {}
+    shared:
+      items:
+        key: memory_id
+        fields:
+          owner: string
+          visibility: [private, team, global]
+          confidence: float
+          ttl_seconds: float|null
+          created_at: float
+          updated_at: float
+
+  logs:
+    events: [event_id]
+    metrics_cache: dict
