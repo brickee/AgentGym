@@ -44,3 +44,14 @@
 ### Decisions
 - Keep backpressure policy in allocator first (single source), later expose to scenario config.
 - Use explicit reject tags (`wait:*`, `retry:*`, `dropped:*`) for deterministic downstream event mapping.
+
+## 2026-03-08 (Next phase iteration 2)
+- Integrated allocator into simulator event flow (`tool_requested` -> allocate -> `tool_started`/`retry_scheduled`/`tool_failed`).
+- Added automatic scheduling of `tool_finished` based on tool latency.
+- Added resource release on `tool_finished` and auto `task_completed` scheduling.
+- Added world-level `backpressure_policy` and resource config wiring.
+- Re-ran end-to-end smoke: `SMOKE_CHECK_OK`.
+
+### Decisions
+- Keep retry delay fixed (1.0s) for now to preserve deterministic behavior; parameterize later.
+- Let simulator own lifecycle scheduling so policy layer can stay simpler and pluggable.

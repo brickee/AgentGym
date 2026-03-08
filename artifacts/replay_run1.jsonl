@@ -1,5 +1,5 @@
 {"sim_time": 0.0, "priority": 0, "seq_id": 1, "event_type": "task_created", "actor_id": "system", "correlation_id": "run1", "payload": {"task_id": "t1"}}
-{"sim_time": 0.1, "priority": 0, "seq_id": 2, "event_type": "tool_requested", "actor_id": "agent_0", "correlation_id": "run1", "payload": {"task_id": "t1", "tool_request_id": "tr1"}}
-{"sim_time": 0.2, "priority": 0, "seq_id": 3, "event_type": "tool_started", "actor_id": "agent_0", "correlation_id": "run1", "payload": {"task_id": "t1", "tool_request_id": "tr1"}}
-{"sim_time": 1.0, "priority": 0, "seq_id": 4, "event_type": "tool_finished", "actor_id": "agent_0", "correlation_id": "run1", "payload": {"task_id": "t1", "tool_request_id": "tr1"}}
-{"sim_time": 1.1, "priority": 0, "seq_id": 5, "event_type": "task_completed", "actor_id": "agent_0", "correlation_id": "run1", "payload": {"task_id": "t1"}}
+{"sim_time": 0.1, "priority": 0, "seq_id": 2, "event_type": "tool_requested", "actor_id": "agent_0", "correlation_id": "run1", "payload": {"task_id": "t1", "tool_request_id": "tr1", "tool_id": "search"}}
+{"sim_time": 0.1, "priority": 1, "seq_id": 3, "event_type": "tool_started", "actor_id": "agent_0", "correlation_id": "run1", "payload": {"task_id": "t1", "tool_request_id": "tr1", "tool_id": "search"}}
+{"sim_time": 2.1, "priority": 1, "seq_id": 4, "event_type": "tool_finished", "actor_id": "agent_0", "correlation_id": "run1", "payload": {"task_id": "t1", "tool_request_id": "tr1", "tool_id": "search"}}
+{"sim_time": 2.1, "priority": 1, "seq_id": 5, "event_type": "task_completed", "actor_id": "agent_0", "correlation_id": "run1", "payload": {"task_id": "t1"}}

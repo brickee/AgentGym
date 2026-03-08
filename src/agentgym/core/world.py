@@ -7,9 +7,11 @@ class WorldState:
     current_time: float = 0.0
     seed: int = 42
     status: str = "idle"
+    backpressure_policy: str = "wait"
     agents: Dict[str, Dict[str, Any]] = field(default_factory=dict)
     tasks: Dict[str, Dict[str, Any]] = field(default_factory=dict)
     tools: Dict[str, Dict[str, Any]] = field(default_factory=dict)
+    resources: Dict[str, int] = field(default_factory=dict)
     metrics: Dict[str, float] = field(default_factory=lambda: {
         "task_success_rate": 0.0,
         "average_completion_time": 0.0,
