@@ -145,3 +145,20 @@
 - `PYTHONPATH=src python3 scripts/run_benchmark.py` -> `BENCHMARK_OK`
 - `python3 scripts/summarize_benchmark.py` -> `SUMMARY_OK`
 - `PYTHONPATH=src python3 -m pytest -q` failed: `No module named pytest` (environment blocker)
+
+## 2026-03-08 (Autopilot sprint — memory semantics coupled to task outcomes)
+- Replaced standalone memory-cycle events with policy-driven, task-coupled memory workloads.
+- Added memory runtime semantics:
+  - TTL (`expires_at`)
+  - confidence threshold filtering (`min_confidence`)
+  - stale/low-confidence miss tracking
+- Extended `memory_read` to branch into deterministic tool request paths (`on_hit` vs `on_miss`), directly affecting task runtime outcomes.
+- Added policy-specific memory-cycle plans across independent/planner-worker/shared-memory baselines.
+- Expanded benchmark outputs and summary aggregation with memory quality counters:
+  - `memory_hit_count`, `memory_miss_count`, `memory_stale_read_count`, `memory_low_confidence_read_count`
+- Added/updated tests for memory hit/miss path execution and stale-read accounting.
+
+### Validation
+- `PYTHONPATH=src python3 scripts/smoke_check.py` -> `SMOKE_CHECK_OK`
+- `PYTHONPATH=src python3 scripts/run_benchmark.py` -> `BENCHMARK_OK`
+- `python3 scripts/summarize_benchmark.py` -> `SUMMARY_OK`

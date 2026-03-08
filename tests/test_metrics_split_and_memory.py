@@ -41,4 +41,50 @@ def test_memory_event_counters_and_invalidation():
     assert world.metrics["memory_write_count"] == 1.0
     assert world.metrics["memory_read_count"] == 1.0
     assert world.metrics["memory_invalidate_count"] == 1.0
+    assert world.metrics["memory_hit_count"] == 1.0
+    assert world.metrics["memory_miss_count"] == 0.0
     assert "k1" not in world.memory_store
+
+
+def test_memory_read_drives_hit_vs_miss_tool_paths():
+    world = make_mvp_world()
+    sim = Simulator(world, enable_replay=False)
+
+    sim.schedule(0.0, 0, "task_created", "system", "m", {"task_id": "t_hit"})
+    sim.schedule(0.0, 0, "task_created", "system", "m", {"task_id": "t_miss"})
+
+    sim.schedule(0.0, 0, "memory_write", "agent_0", "m", {
+        "memory_id": "hint:hit",
+        "value": {"preferred_tool": "search"},
+        "ttl": 1.0,
+        "confidence": 0.9,
+    })
+    sim.schedule(0.1, 0, "memory_read", "agent_1", "m", {
+        "memory_id": "hint:hit",
+        "task_id": "t_hit",
+        "min_confidence": 0.6,
+        "on_hit": {"tool_id": "search", "tool_request_id": "hit_req"},
+        "on_miss": {"tool_id": "compute", "tool_request_id": "hit_fallback"},
+    })
+
+    sim.schedule(0.0, 0, "memory_write", "agent_0", "m", {
+        "memory_id": "hint:stale",
+        "value": {"preferred_tool": "search"},
+        "ttl": 0.01,
+        "confidence": 0.9,
+    })
+    sim.schedule(0.1, 0, "memory_read", "agent_2", "m", {
+        "memory_id": "hint:stale",
+        "task_id": "t_miss",
+        "min_confidence": 0.6,
+        "on_hit": {"tool_id": "search", "tool_request_id": "stale_req"},
+        "on_miss": {"tool_id": "compute", "tool_request_id": "miss_req"},
+    })
+
+    sim.run(max_events=200)
+
+    assert world.tasks["t_hit"]["status"] == "done"
+    assert world.tasks["t_miss"]["status"] == "done"
+    assert world.metrics["memory_hit_count"] == 1.0
+    assert world.metrics["memory_miss_count"] == 1.0
+    assert world.metrics["memory_stale_read_count"] == 1.0

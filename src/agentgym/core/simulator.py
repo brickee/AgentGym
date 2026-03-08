@@ -165,16 +165,53 @@ class Simulator:
 
         if evt.event_type == "memory_write":
             mem_id = evt.payload["memory_id"]
+            ttl = evt.payload.get("ttl")
+            ttl_v = float(ttl) if ttl is not None else None
+            confidence = float(evt.payload.get("confidence", 1.0))
             self.world.memory_store[mem_id] = {
                 "value": evt.payload.get("value"),
                 "owner": evt.actor_id,
                 "updated_at": evt.sim_time,
+                "expires_at": (evt.sim_time + ttl_v) if ttl_v is not None else None,
+                "confidence": confidence,
             }
             self.world.metrics["memory_write_count"] += 1
             return
 
         if evt.event_type == "memory_read":
             self.world.metrics["memory_read_count"] += 1
+            mem_id = evt.payload.get("memory_id")
+            task_id = evt.payload.get("task_id")
+            req_on_hit = evt.payload.get("on_hit")
+            req_on_miss = evt.payload.get("on_miss")
+            min_conf = float(evt.payload.get("min_confidence", 0.0))
+
+            entry = self.world.memory_store.get(mem_id)
+            is_hit = False
+            if entry is not None:
+                expires_at = entry.get("expires_at")
+                if expires_at is not None and evt.sim_time > float(expires_at):
+                    self.world.metrics["memory_stale_read_count"] += 1
+                    self.world.metrics["memory_miss_count"] += 1
+                    del self.world.memory_store[mem_id]
+                elif float(entry.get("confidence", 1.0)) < min_conf:
+                    self.world.metrics["memory_low_confidence_read_count"] += 1
+                    self.world.metrics["memory_miss_count"] += 1
+                else:
+                    self.world.metrics["memory_hit_count"] += 1
+                    is_hit = True
+            else:
+                self.world.metrics["memory_miss_count"] += 1
+
+            req = req_on_hit if is_hit else req_on_miss
+            if req and task_id:
+                tool_id = req["tool_id"]
+                req_id = req["tool_request_id"]
+                self.schedule(evt.sim_time + 0.001, 1, "tool_requested", evt.actor_id, evt.correlation_id, {
+                    "task_id": task_id,
+                    "tool_request_id": req_id,
+                    "tool_id": tool_id,
+                })
             return
 
         if evt.event_type == "memory_invalidate":

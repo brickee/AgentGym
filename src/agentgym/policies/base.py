@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import List, Dict
+from typing import List, Dict, Any
 
 
 @dataclass
@@ -20,6 +20,27 @@ class MessagePlan:
     content: str
 
 
+@dataclass
+class MemoryWritePlan:
+    actor_id: str
+    memory_id: str
+    value: Dict[str, Any]
+    at: float
+    ttl: float | None = None
+    confidence: float = 1.0
+
+
+@dataclass
+class MemoryReadPlan:
+    actor_id: str
+    memory_id: str
+    task_id: str
+    at: float
+    on_hit: Dict[str, Any]
+    on_miss: Dict[str, Any]
+    min_confidence: float = 0.5
+
+
 class BasePolicy:
     name: str = "base"
 
@@ -31,6 +52,9 @@ class BasePolicy:
 
     def plan_messages(self, num_tasks: int, num_agents: int = 5) -> List[MessagePlan]:
         return []
+
+    def plan_memory_cycle(self, num_tasks: int, num_agents: int = 5) -> Dict[str, List]:
+        return {"writes": [], "reads": [], "invalidations": []}
 
     def world_overrides(self) -> Dict:
         return {}

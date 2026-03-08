@@ -51,5 +51,34 @@ class IndependentPolicy(BasePolicy):
             )
         return msgs
 
+    def plan_memory_cycle(self, num_tasks: int, num_agents: int = 5):
+        writes = []
+        reads = []
+        invalidations = []
+        for i in range(min(4, num_tasks)):
+            mem_id = f"shared:hint:t{i}"
+            task_id = f"t{i}"
+            # Independent team writes sparse, lower-confidence hints.
+            writes.append({
+                "actor_id": f"agent_{i % num_agents}",
+                "memory_id": mem_id,
+                "value": {"preferred_tool": "search"},
+                "at": 0.02 + i * 0.04,
+                "ttl": 0.03 if i % 2 == 0 else 1.5,
+                "confidence": 0.45 if i % 2 == 0 else 0.7,
+            })
+            reads.append({
+                "actor_id": f"agent_{(i + 1) % num_agents}",
+                "memory_id": mem_id,
+                "task_id": task_id,
+                "at": 0.08 + i * 0.04,
+                "min_confidence": 0.6,
+                "on_hit": {"tool_id": "search", "tool_request_id": f"mem_hit_ind_{i}"},
+                "on_miss": {"tool_id": "compute", "tool_request_id": f"mem_miss_ind_{i}"},
+            })
+            if i == 1:
+                invalidations.append({"actor_id": "agent_0", "memory_id": mem_id, "at": 0.095})
+        return {"writes": writes, "reads": reads, "invalidations": invalidations}
+
     def world_overrides(self):
         return {"backpressure_policy": "retry", "retry_mode": "fixed"}

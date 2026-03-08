@@ -39,5 +39,33 @@ class SharedMemoryPolicy(BasePolicy):
             )
         return msgs
 
+    def plan_memory_cycle(self, num_tasks: int, num_agents: int = 5):
+        writes = []
+        reads = []
+        invalidations = []
+        for i in range(min(4, num_tasks)):
+            mem_id = f"shared:hint:t{i}"
+            task_id = f"t{i}"
+            writes.append({
+                "actor_id": f"agent_{i % num_agents}",
+                "memory_id": mem_id,
+                "value": {"preferred_tool": "search"},
+                "at": 0.005 + i * 0.025,
+                "ttl": 4.0,
+                "confidence": 0.95,
+            })
+            reads.append({
+                "actor_id": f"agent_{(i + 2) % num_agents}",
+                "memory_id": mem_id,
+                "task_id": task_id,
+                "at": 0.05 + i * 0.025,
+                "min_confidence": 0.7,
+                "on_hit": {"tool_id": "search", "tool_request_id": f"mem_hit_sm_{i}"},
+                "on_miss": {"tool_id": "compute", "tool_request_id": f"mem_miss_sm_{i}"},
+            })
+            if i == 3:
+                invalidations.append({"actor_id": "agent_4", "memory_id": mem_id, "at": 0.2})
+        return {"writes": writes, "reads": reads, "invalidations": invalidations}
+
     def world_overrides(self):
         return {"backpressure_policy": "retry", "retry_mode": "exp", "retry_base_delay": 0.5}

@@ -25,21 +25,38 @@ class RunConfig:
     num_tasks: int = 12
 
 
-def _schedule_memory_workload(sim: Simulator, scenario: str):
+def _schedule_memory_workload(sim: Simulator, scenario: str, policy, cfg: RunConfig):
     if scenario != "memory_cycle":
-        return
+        return set()
 
-    # Deterministic memory workload to cover write/read/invalidate lifecycle.
-    sim.schedule(0.02, 0, "memory_write", "agent_0", "bench_memory", {
-        "memory_id": "shared:plan:t0",
-        "value": {"owner": "agent_0", "hint": "use-search-first"},
-    })
-    sim.schedule(0.03, 0, "memory_read", "agent_1", "bench_memory", {
-        "memory_id": "shared:plan:t0",
-    })
-    sim.schedule(0.04, 0, "memory_invalidate", "agent_2", "bench_memory", {
-        "memory_id": "shared:plan:t0",
-    })
+    workload = policy.plan_memory_cycle(num_tasks=cfg.num_tasks, num_agents=len(sim.world.agents))
+    coupled_tasks = set()
+
+    for w in workload.get("writes", []):
+        sim.schedule(w["at"], 0, "memory_write", w["actor_id"], "bench_memory", {
+            "memory_id": w["memory_id"],
+            "value": w.get("value", {}),
+            "ttl": w.get("ttl"),
+            "confidence": w.get("confidence", 1.0),
+        })
+
+    for r in workload.get("reads", []):
+        coupled_tasks.add(r["task_id"])
+        sim.schedule(0.0, 0, "task_created", "system", "bench_memory", {"task_id": r["task_id"]})
+        sim.schedule(r["at"], 0, "memory_read", r["actor_id"], "bench_memory", {
+            "memory_id": r["memory_id"],
+            "task_id": r["task_id"],
+            "on_hit": r["on_hit"],
+            "on_miss": r["on_miss"],
+            "min_confidence": r.get("min_confidence", 0.5),
+        })
+
+    for inv in workload.get("invalidations", []):
+        sim.schedule(inv["at"], 0, "memory_invalidate", inv["actor_id"], "bench_memory", {
+            "memory_id": inv["memory_id"],
+        })
+
+    return coupled_tasks
 
 
 def _schedule_message_workload(sim: Simulator, policy, cfg: RunConfig, num_agents: int):
@@ -63,8 +80,11 @@ def run_once(cfg: RunConfig) -> Dict:
         plans.extend(policy.plan_semantic_duplicates(num_tasks=cfg.num_tasks, num_agents=len(world.agents)))
 
     sim = Simulator(world, enable_replay=False)
-    _schedule_memory_workload(sim, cfg.scenario)
+    coupled_tasks = _schedule_memory_workload(sim, cfg.scenario, policy, cfg)
     _schedule_message_workload(sim, policy, cfg, len(world.agents))
+
+    if coupled_tasks:
+        plans = [p for p in plans if p.task_id not in coupled_tasks]
 
     created_tasks = set()
     for plan in plans:
@@ -95,6 +115,10 @@ def run_once(cfg: RunConfig) -> Dict:
         "memory_write_count": int(world.metrics["memory_write_count"]),
         "memory_read_count": int(world.metrics["memory_read_count"]),
         "memory_invalidate_count": int(world.metrics["memory_invalidate_count"]),
+        "memory_hit_count": int(world.metrics["memory_hit_count"]),
+        "memory_miss_count": int(world.metrics["memory_miss_count"]),
+        "memory_stale_read_count": int(world.metrics["memory_stale_read_count"]),
+        "memory_low_confidence_read_count": int(world.metrics["memory_low_confidence_read_count"]),
         "sim_end_time": round(world.current_time, 4),
     }
 

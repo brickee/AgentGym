@@ -1,9 +1,9 @@
 # NEXT TODO
 
 ## Immediate (next session)
-1. Couple memory workload to task outcomes (cache hit/miss patterns that alter tool choice or latency) instead of standalone memory events.
-2. Add per-scenario delta reporting (policy-vs-policy and baseline-vs-semantic_overlap-vs-memory_cycle) in summary output.
-3. Add dependency bootstrap (`pytest` + minimal dev extras) and a single CI command running smoke + unit checks.
+1. Add per-scenario delta reporting (policy-vs-policy and baseline-vs-semantic_overlap-vs-memory_cycle) in summary output.
+2. Add dependency bootstrap (`pytest` + minimal dev extras) and a single CI command running smoke + unit checks.
+3. Add confidence-threshold sweeps to memory_cycle to quantify quality-vs-latency tradeoff.
 
 ## Quality tasks
 - Add strict schema/versioning for benchmark CSV columns to avoid downstream parser drift.

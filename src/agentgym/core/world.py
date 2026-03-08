@@ -30,4 +30,8 @@ class WorldState:
         "memory_read_count": 0.0,
         "memory_write_count": 0.0,
         "memory_invalidate_count": 0.0,
+        "memory_hit_count": 0.0,
+        "memory_miss_count": 0.0,
+        "memory_stale_read_count": 0.0,
+        "memory_low_confidence_read_count": 0.0,
     })

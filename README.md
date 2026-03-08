@@ -32,6 +32,7 @@ python3 scripts/summarize_benchmark.py
 ## Benchmark notes
 - Scenarios: `baseline`, `semantic_overlap`, `memory_cycle`
 - Semantic duplicate-work is measured as distinct request IDs for the same `(task_id, tool_id)` intent.
+- Memory-cycle now couples memory to runtime outcomes using hit/miss tool branching (`on_hit`/`on_miss`) with TTL + confidence semantics.
 - Communication metrics are event-level runtime counters:
   - `communication_event_count`
   - `communication_cost`
