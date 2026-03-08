@@ -1,5 +1,9 @@
+from pathlib import Path
+
 from agentgym.core.events import Event
 from agentgym.core.simulator import Simulator
+from agentgym.core.allocator import ResourceAllocator
+from agentgym.core.replay import load_jsonl
 from agentgym.envs.mvp_world import make_mvp_world
 
 
@@ -9,13 +13,34 @@ def main():
     e3 = Event(sim_time=0.5, priority=9, seq_id=1, event_type="x", actor_id="a", correlation_id="c")
     assert sorted([e1, e2, e3]) == [e3, e2, e1], "event ordering failed"
 
+    allocator = ResourceAllocator(
+        resource_config={"api_search": 1, "compute_slot": 1, "db_lock": 1},
+        tool_requirements={"search": ["api_search"], "compute": ["compute_slot"]},
+    )
+    ok, resources = allocator.allocate("search")
+    assert ok and resources == ["api_search"], "allocator failed on first allocation"
+    ok2, _ = allocator.allocate("search")
+    assert not ok2, "allocator should enforce capacity"
+    allocator.release(resources)
+    ok3, _ = allocator.allocate("search")
+    assert ok3, "allocator release path failed"
+
     world = make_mvp_world()
-    sim = Simulator(world)
+    sim = Simulator(world, enable_replay=True)
     sim.schedule(0.0, 0, "task_created", "system", "run1", {"task_id": "t1"})
-    sim.schedule(1.0, 0, "task_completed", "agent_0", "run1", {"task_id": "t1"})
+    sim.schedule(0.1, 0, "tool_requested", "agent_0", "run1", {"task_id": "t1", "tool_request_id": "tr1"})
+    sim.schedule(0.2, 0, "tool_started", "agent_0", "run1", {"task_id": "t1", "tool_request_id": "tr1"})
+    sim.schedule(1.0, 0, "tool_finished", "agent_0", "run1", {"task_id": "t1", "tool_request_id": "tr1"})
+    sim.schedule(1.1, 0, "task_completed", "agent_0", "run1", {"task_id": "t1"})
     processed = sim.run()
-    assert processed == 2, "processed count mismatch"
+    assert processed == 5, "processed count mismatch"
     assert world.tasks["t1"]["status"] == "done", "task completion failed"
+
+    out = Path("artifacts/replay_run1.jsonl")
+    sim.recorder.dump_jsonl(str(out))
+    replay = load_jsonl(str(out))
+    assert len(replay) == 5, "replay length mismatch"
+
     print("SMOKE_CHECK_OK")
 
 

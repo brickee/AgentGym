@@ -23,3 +23,15 @@
 - Add transition validator
 - Add resource allocator abstraction
 - Add deterministic replay artifact
+
+
+## Iteration 2 updates
+- Added `TransitionValidator` to enforce event lifecycle constraints at runtime.
+- Added `ResourceAllocator` to separate tool intents from shared-resource accounting.
+- Added JSONL `EventRecorder` for replay artifacts.
+- Upgraded smoke check to cover ordering, allocator contention, validator lifecycle, and replay persistence.
+
+## Remaining design debts
+- Rate-limit token-bucket semantics not implemented yet (currently capacity-only).
+- No backpressure policy yet (drop vs wait vs preempt).
+- Memory subsystem still schema-first, runtime hooks pending.

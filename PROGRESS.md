@@ -24,3 +24,13 @@
 ### Decisions
 - Keep deterministic event ordering contract explicit: `(time, priority, seq_id)`.
 - Prioritize transition validation + allocator abstraction in Day 2.
+
+## 2026-03-08 (Day 1 — iteration 2)
+- Added runtime `TransitionValidator` for tool lifecycle/task terminal/resource-balance checks.
+- Added `ResourceAllocator` abstraction to decouple tool intent from resource accounting.
+- Added replay recorder (`EventRecorder`) with JSONL artifact export.
+- Expanded smoke checks and passed: `PYTHONPATH=src python3 scripts/smoke_check.py`.
+
+### Decisions
+- Fail fast on invalid event transitions (raise immediately) to prevent silent corruption.
+- Keep replay format JSONL for cheap append + easy downstream analytics.
