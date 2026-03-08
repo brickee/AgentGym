@@ -149,7 +149,10 @@ class Simulator:
             self.allocator.release(held)
             task_id = evt.payload.get("task_id")
             if task_id and task_id in self.world.tasks:
-                self.schedule(evt.sim_time, 1, "task_completed", evt.actor_id, evt.correlation_id, {"task_id": task_id})
+                task = self.world.tasks[task_id]
+                if task.get("status") != "done" and not task.get("completion_enqueued", False):
+                    task["completion_enqueued"] = True
+                    self.schedule(evt.sim_time, 1, "task_completed", evt.actor_id, evt.correlation_id, {"task_id": task_id})
             return
 
         if evt.event_type == "task_completed":
@@ -157,6 +160,7 @@ class Simulator:
             if task_id in self.world.tasks:
                 self.world.tasks[task_id]["status"] = "done"
                 self.world.tasks[task_id]["completed_at"] = evt.sim_time
+                self.world.tasks[task_id].pop("completion_enqueued", None)
             return
 
         if evt.event_type == "memory_write":
@@ -178,4 +182,17 @@ class Simulator:
             if mem_id in self.world.memory_store:
                 del self.world.memory_store[mem_id]
             self.world.metrics["memory_invalidate_count"] += 1
+            return
+
+        if evt.event_type == "send_message":
+            self.world.metrics["communication_event_count"] += 1
+            content = str(evt.payload.get("content", ""))
+            recipient_count = len(evt.payload.get("recipient_ids", []))
+            if recipient_count == 0 and evt.payload.get("recipient_id"):
+                recipient_count = 1
+            if recipient_count == 0:
+                recipient_count = 1
+            fixed_cost = 1.0
+            token_cost = max(1.0, float(len(content)) / 8.0)
+            self.world.metrics["communication_cost"] += fixed_cost + token_cost * float(recipient_count)
             return

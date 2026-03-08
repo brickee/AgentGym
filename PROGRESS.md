@@ -126,3 +126,22 @@
 ### Self-review
 - Split metric semantics now avoid counting retries as duplicate work (resolves prior confound).
 - Memory workload currently validates event plumbing only; richer task-coupled memory scenarios remain for next pass.
+
+## 2026-03-08 (Autopilot sprint — semantic overlap + communication metrics)
+- Added dedicated `semantic_overlap` benchmark scenario using deterministic policy-provided duplicate-intent plans.
+- Expanded policy realism (deterministic task/tool mixes + explicit communication plans) while keeping reproducibility.
+- Added runtime `send_message` event handling with event-level metrics:
+  - `communication_event_count`
+  - `communication_cost`
+- Wired communication metrics into benchmark CSV output and markdown summary aggregation.
+- Hardened task completion scheduling to avoid duplicate terminal events when multiple tools complete for one task.
+- Added tests (`tests/test_policy_signal_and_comm.py`) for:
+  - policy-distinguishable semantic duplicate-work signal
+  - event-level communication metric accounting
+- Updated README quickstart/status/metric notes for new scenarios and communication counters.
+
+### Validation
+- `PYTHONPATH=src python3 scripts/smoke_check.py` -> `SMOKE_CHECK_OK`
+- `PYTHONPATH=src python3 scripts/run_benchmark.py` -> `BENCHMARK_OK`
+- `python3 scripts/summarize_benchmark.py` -> `SUMMARY_OK`
+- `PYTHONPATH=src python3 -m pytest -q` failed: `No module named pytest` (environment blocker)

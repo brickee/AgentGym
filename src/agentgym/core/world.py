@@ -23,6 +23,7 @@ class WorldState:
         "duplicate_tool_calls": 0.0,  # legacy compatibility alias
         "semantic_duplicate_work_count": 0.0,
         "communication_cost": 0.0,
+        "communication_event_count": 0.0,
         "events_processed": 0.0,
         "retry_count": 0.0,  # legacy compatibility alias
         "protocol_retry_count": 0.0,

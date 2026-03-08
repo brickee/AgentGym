@@ -26,7 +26,15 @@ It targets three axes together:
 ```bash
 PYTHONPATH=src python3 scripts/smoke_check.py
 PYTHONPATH=src python3 scripts/run_benchmark.py
+python3 scripts/summarize_benchmark.py
 ```
 
+## Benchmark notes
+- Scenarios: `baseline`, `semantic_overlap`, `memory_cycle`
+- Semantic duplicate-work is measured as distinct request IDs for the same `(task_id, tool_id)` intent.
+- Communication metrics are event-level runtime counters:
+  - `communication_event_count`
+  - `communication_cost`
+
 ## Status
-Bootstrapping the MVP architecture.
+M1/M2 simulator + baseline evaluation active with scenario-aware duplicate-work and communication-cost metrics.
