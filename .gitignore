@@ -18,3 +18,9 @@ htmlcov/
 
 # OS
 .DS_Store
+
+# Generated artifacts
+artifacts/*.jsonl
+artifacts/*.csv
+artifacts/*.md
+!artifacts/.gitkeep

@@ -85,3 +85,19 @@
 ### Decisions
 - Keep policy behavior explicit and deterministic (no RNG in baseline logic yet).
 - Use planner/intent level duplicate metric now; replace later with event-log-level duplicate-work metric.
+
+## 2026-03-08 (Next phase iteration 5)
+- Added runtime memory hooks to simulator: `memory_write`, `memory_read`, `memory_invalidate`.
+- Upgraded duplicate metric from planner-intent approximation to runtime event-level (`duplicate_tool_calls`).
+- Added benchmark summary generator: `scripts/summarize_benchmark.py` -> `artifacts/benchmark_v0_summary.md`.
+- Added artifact hygiene in `.gitignore` to prevent generated files polluting commits.
+
+### Validation
+- `PYTHONPATH=src python3 scripts/smoke_check.py` -> `SMOKE_CHECK_OK`
+- `PYTHONPATH=src python3 scripts/run_benchmark.py` -> `BENCHMARK_OK`
+- `python3 scripts/summarize_benchmark.py` -> `SUMMARY_OK`
+
+### Design note
+- Current duplicate metric counts repeated `(task_id, tool_id)` requests including retry loops; next iteration should split into:
+  - protocol-level retries
+  - semantically duplicate work (distinct request IDs)

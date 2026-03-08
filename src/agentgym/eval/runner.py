@@ -24,18 +24,6 @@ class RunConfig:
     num_tasks: int = 12
 
 
-def _duplicate_intent_count(plans) -> int:
-    # naive duplicate signal: same tool starts in near-identical time bins
-    seen = {}
-    dup = 0
-    for p in plans:
-        key = (p.tool_id, round(p.start_at, 1))
-        if key in seen:
-            dup += 1
-        seen[key] = seen.get(key, 0) + 1
-    return dup
-
-
 def run_once(cfg: RunConfig) -> Dict:
     world = make_mvp_world(seed=cfg.seed)
 
@@ -63,7 +51,7 @@ def run_once(cfg: RunConfig) -> Dict:
         "task_success_rate": world.metrics["task_success_rate"],
         "avg_completion_time": round(world.metrics["average_completion_time"], 4),
         "retry_count": int(world.metrics["retry_count"]),
-        "duplicate_intent_count": _duplicate_intent_count(plans),
+        "duplicate_tool_calls": int(world.metrics["duplicate_tool_calls"]),
         "sim_end_time": round(world.current_time, 4),
     }
 

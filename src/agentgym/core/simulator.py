@@ -1,5 +1,5 @@
 import heapq
-from typing import List, Dict
+from typing import List, Dict, Set, Tuple
 
 from .events import Event
 from .world import WorldState
@@ -38,6 +38,7 @@ class Simulator:
         )
         self._held_resources: Dict[str, List[str]] = {}
         self._retry_count_by_request: Dict[str, int] = {}
+        self._tool_call_seen: Set[Tuple[str, str]] = set()
 
     def schedule(self, sim_time: float, priority: int, event_type: str, actor_id: str, correlation_id: str, payload=None):
         if payload is None:
@@ -106,6 +107,13 @@ class Simulator:
         if evt.event_type == "tool_requested":
             tool_id = evt.payload["tool_id"]
             req_id = evt.payload["tool_request_id"]
+            task_id = evt.payload.get("task_id", "")
+            key = (task_id, tool_id)
+            if key in self._tool_call_seen:
+                self.world.metrics["duplicate_tool_calls"] += 1
+            else:
+                self._tool_call_seen.add(key)
+
             ok, held, tag = self.allocator.allocate(tool_id, now=evt.sim_time)
             if ok:
                 self._held_resources[req_id] = held
@@ -139,4 +147,24 @@ class Simulator:
             if task_id in self.world.tasks:
                 self.world.tasks[task_id]["status"] = "done"
                 self.world.tasks[task_id]["completed_at"] = evt.sim_time
+            return
+
+        if evt.event_type == "memory_write":
+            mem_id = evt.payload["memory_id"]
+            self.world.memory_store[mem_id] = {
+                "value": evt.payload.get("value"),
+                "owner": evt.actor_id,
+                "updated_at": evt.sim_time,
+            }
+            self.world.metrics["memory_write_count"] += 1
+            return
+
+        if evt.event_type == "memory_read":
+            self.world.metrics["memory_read_count"] += 1
+            return
+
+        if evt.event_type == "memory_invalidate":
+            mem_id = evt.payload.get("memory_id")
+            if mem_id in self.world.memory_store:
+                del self.world.memory_store[mem_id]
             return
