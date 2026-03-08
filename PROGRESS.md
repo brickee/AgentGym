@@ -66,3 +66,22 @@
 ### Decisions
 - Keep validator strict but retry-aware; retries must loop through explicit state transitions.
 - Keep runner simple first (scenario-level policy knobs), then swap in real policy logic next.
+
+## 2026-03-08 (Next phase iteration 4)
+- Replaced placeholder baselines with concrete policy planners:
+  - `IndependentPolicy`
+  - `PlannerWorkerPolicy`
+  - `SharedMemoryPolicy`
+- Runner now uses policy-generated request plans instead of hardcoded event patterns.
+- Added average completion time metric and duplicate-intent signal.
+- Wired task completion timestamps (`completed_at`) into simulator metrics.
+- Re-ran smoke + benchmark successfully.
+
+### Validation snapshot
+- independent: retry_count=165, avg_completion_time=19.8545, duplicate_intent_count=10
+- planner_worker: retry_count=85, avg_completion_time=12.2845, duplicate_intent_count=1
+- shared_memory: retry_count=32, avg_completion_time=12.9528, duplicate_intent_count=4
+
+### Decisions
+- Keep policy behavior explicit and deterministic (no RNG in baseline logic yet).
+- Use planner/intent level duplicate metric now; replace later with event-log-level duplicate-work metric.

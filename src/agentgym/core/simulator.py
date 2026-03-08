@@ -6,7 +6,7 @@ from .world import WorldState
 from .validator import TransitionValidator
 from .replay import EventRecorder
 from .allocator import ResourceAllocator
-from agentgym.eval.metrics import compute_task_success_rate
+from agentgym.eval.metrics import compute_task_success_rate, compute_average_completion_time
 
 
 class Simulator:
@@ -83,6 +83,7 @@ class Simulator:
 
         self.world.metrics["events_processed"] = float(processed)
         self.world.metrics["task_success_rate"] = compute_task_success_rate(self.world.tasks)
+        self.world.metrics["average_completion_time"] = compute_average_completion_time(self.world.tasks)
         self.world.metrics["retry_count"] = float(sum(self._retry_count_by_request.values()))
         return processed
 
@@ -137,4 +138,5 @@ class Simulator:
             task_id = evt.payload["task_id"]
             if task_id in self.world.tasks:
                 self.world.tasks[task_id]["status"] = "done"
+                self.world.tasks[task_id]["completed_at"] = evt.sim_time
             return

@@ -1,48 +1,70 @@
 import csv
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List
+from typing import List, Dict
 
 from agentgym.core.simulator import Simulator
 from agentgym.envs.mvp_world import make_mvp_world
+from agentgym.policies.independent import IndependentPolicy
+from agentgym.policies.planner_worker import PlannerWorkerPolicy
+from agentgym.policies.shared_memory import SharedMemoryPolicy
+
+
+POLICIES = {
+    "independent": IndependentPolicy,
+    "planner_worker": PlannerWorkerPolicy,
+    "shared_memory": SharedMemoryPolicy,
+}
 
 
 @dataclass
 class RunConfig:
     policy_name: str
     seed: int
+    num_tasks: int = 12
 
 
-def run_once(cfg: RunConfig):
+def _duplicate_intent_count(plans) -> int:
+    # naive duplicate signal: same tool starts in near-identical time bins
+    seen = {}
+    dup = 0
+    for p in plans:
+        key = (p.tool_id, round(p.start_at, 1))
+        if key in seen:
+            dup += 1
+        seen[key] = seen.get(key, 0) + 1
+    return dup
+
+
+def run_once(cfg: RunConfig) -> Dict:
     world = make_mvp_world(seed=cfg.seed)
-    # lightweight policy effects at environment level (placeholder)
-    if cfg.policy_name == "independent":
-        world.backpressure_policy = "retry"
-    elif cfg.policy_name == "planner_worker":
-        world.backpressure_policy = "wait"
-    elif cfg.policy_name == "shared_memory":
-        world.backpressure_policy = "retry"
-        world.retry_mode = "exp"
+
+    policy = POLICIES[cfg.policy_name]()
+    for k, v in policy.world_overrides().items():
+        setattr(world, k, v)
+
+    plans = policy.plan_requests(num_tasks=cfg.num_tasks, num_agents=len(world.agents))
 
     sim = Simulator(world, enable_replay=False)
-    for i in range(5):
-        task_id = f"t{i}"
-        req_id = f"tr{i}"
-        sim.schedule(0.0 + i * 0.01, 0, "task_created", "system", "bench", {"task_id": task_id})
-        sim.schedule(0.1 + i * 0.01, 0, "tool_requested", f"agent_{i%5}", "bench", {
-            "task_id": task_id,
-            "tool_request_id": req_id,
-            "tool_id": "search" if i % 2 == 0 else "compute",
+    for i, plan in enumerate(plans):
+        sim.schedule(0.0 + i * 0.001, 0, "task_created", "system", "bench", {"task_id": plan.task_id})
+        sim.schedule(plan.start_at, 0, "tool_requested", plan.agent_id, "bench", {
+            "task_id": plan.task_id,
+            "tool_request_id": plan.tool_request_id,
+            "tool_id": plan.tool_id,
         })
 
-    processed = sim.run(max_events=2000)
+    processed = sim.run(max_events=5000)
     return {
         "policy": cfg.policy_name,
         "seed": cfg.seed,
+        "tasks": cfg.num_tasks,
         "events_processed": int(processed),
         "task_success_rate": world.metrics["task_success_rate"],
+        "avg_completion_time": round(world.metrics["average_completion_time"], 4),
         "retry_count": int(world.metrics["retry_count"]),
-        "sim_end_time": world.current_time,
+        "duplicate_intent_count": _duplicate_intent_count(plans),
+        "sim_end_time": round(world.current_time, 4),
     }
 
 
