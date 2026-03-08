@@ -55,3 +55,14 @@
 ### Decisions
 - Keep retry delay fixed (1.0s) for now to preserve deterministic behavior; parameterize later.
 - Let simulator own lifecycle scheduling so policy layer can stay simpler and pluggable.
+
+## 2026-03-08 (Next phase iteration 3)
+- Added configurable retry strategy in world config: `retry_mode` (`fixed`/`exp`), base/max delay.
+- Added lightweight benchmark runner: 3 policies × 3 seeds -> `artifacts/benchmark_v0.csv`.
+- Added quickstart benchmark command in README.
+- Found and fixed validator bug in retry loop (`retry_scheduled -> tool_requested` transition).
+- Re-ran benchmark after fix: `BENCHMARK_OK`.
+
+### Decisions
+- Keep validator strict but retry-aware; retries must loop through explicit state transitions.
+- Keep runner simple first (scenario-level policy knobs), then swap in real policy logic next.

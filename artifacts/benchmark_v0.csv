@@ -1,0 +1,10 @@
+policy,seed,events_processed,task_success_rate,retry_count,sim_end_time
+independent,1,49,1.0,12,20.13
+independent,2,49,1.0,12,20.13
+independent,3,49,1.0,12,20.13
+planner_worker,1,49,1.0,12,20.13
+planner_worker,2,49,1.0,12,20.13
+planner_worker,3,49,1.0,12,20.13
+shared_memory,1,33,1.0,4,24.13
+shared_memory,2,33,1.0,4,24.13
+shared_memory,3,33,1.0,4,24.13

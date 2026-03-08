@@ -22,5 +22,11 @@ It targets three axes together:
 - `PROGRESS.md` — daily progress log
 - `NEXT_TODO.md` — next actionable tasks
 
+## Quickstart
+```bash
+PYTHONPATH=src python3 scripts/smoke_check.py
+PYTHONPATH=src python3 scripts/run_benchmark.py
+```
+
 ## Status
 Bootstrapping the MVP architecture.

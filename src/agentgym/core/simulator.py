@@ -6,6 +6,7 @@ from .world import WorldState
 from .validator import TransitionValidator
 from .replay import EventRecorder
 from .allocator import ResourceAllocator
+from agentgym.eval.metrics import compute_task_success_rate
 
 
 class Simulator:
@@ -36,6 +37,7 @@ class Simulator:
             backpressure_policy=self.world.backpressure_policy,
         )
         self._held_resources: Dict[str, List[str]] = {}
+        self._retry_count_by_request: Dict[str, int] = {}
 
     def schedule(self, sim_time: float, priority: int, event_type: str, actor_id: str, correlation_id: str, payload=None):
         if payload is None:
@@ -78,7 +80,18 @@ class Simulator:
         ok, msg = self.validator.finalize()
         if not ok:
             raise ValueError(f"final validation failed: {msg}")
+
+        self.world.metrics["events_processed"] = float(processed)
+        self.world.metrics["task_success_rate"] = compute_task_success_rate(self.world.tasks)
+        self.world.metrics["retry_count"] = float(sum(self._retry_count_by_request.values()))
         return processed
+
+    def _retry_delay(self, req_id: str) -> float:
+        c = self._retry_count_by_request.get(req_id, 0)
+        if self.world.retry_mode == "exp":
+            d = self.world.retry_base_delay * (2 ** c)
+            return min(d, self.world.retry_max_delay)
+        return self.world.retry_base_delay
 
     def _handle(self, evt: Event):
         if evt.event_type == "task_created":
@@ -99,9 +112,10 @@ class Simulator:
                 latency = float(self.world.tools[tool_id].get("latency", 1.0))
                 self.schedule(evt.sim_time + latency, 1, "tool_finished", evt.actor_id, evt.correlation_id, evt.payload)
             else:
-                # explicit backpressure behavior
                 if tag.startswith("retry:") or tag.startswith("wait:"):
-                    self.schedule(evt.sim_time + 1.0, 2, "retry_scheduled", evt.actor_id, evt.correlation_id, evt.payload)
+                    self._retry_count_by_request[req_id] = self._retry_count_by_request.get(req_id, 0) + 1
+                    delay = self._retry_delay(req_id)
+                    self.schedule(evt.sim_time + delay, 2, "retry_scheduled", evt.actor_id, evt.correlation_id, evt.payload)
                 else:
                     self.schedule(evt.sim_time, 2, "tool_failed", evt.actor_id, evt.correlation_id, {**evt.payload, "reason": tag})
             return

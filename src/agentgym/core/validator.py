@@ -1,19 +1,17 @@
 from collections import defaultdict
-from typing import Dict, Iterable, Tuple
+from typing import Dict, Tuple
 
 
 class TransitionValidator:
-    """Validate coarse event lifecycle constraints.
+    """Validate coarse event lifecycle constraints."""
 
-    This validator is intentionally lightweight for MVP speed, while making
-    illegal transitions visible early.
-    """
-
-    ALLOWED_TOOL_NEXT = {
+    ALLOWED_NEXT = {
         "tool_requested": {"tool_started", "tool_failed", "retry_scheduled"},
         "tool_started": {"tool_finished", "tool_failed", "task_failed"},
+        "retry_scheduled": {"tool_requested", "tool_failed"},
     }
 
+    TERMINAL_TOOL = {"tool_finished", "tool_failed", "task_failed"}
     TERMINAL_TASK = {"task_completed", "task_failed"}
 
     def __init__(self) -> None:
@@ -25,7 +23,14 @@ class TransitionValidator:
         tool_req_id = payload.get("tool_request_id")
         task_id = payload.get("task_id")
 
-        if tool_req_id and event_type in {"tool_requested", "tool_started", "tool_finished", "tool_failed", "retry_scheduled", "task_failed"}:
+        if tool_req_id and event_type in {
+            "tool_requested",
+            "tool_started",
+            "tool_finished",
+            "tool_failed",
+            "retry_scheduled",
+            "task_failed",
+        }:
             ok, msg = self._validate_tool_lifecycle(tool_req_id, event_type)
             if not ok:
                 return False, msg
@@ -64,10 +69,10 @@ class TransitionValidator:
             self._last_tool_event[tool_req_id] = current
             return True, "ok"
 
-        allowed = self.ALLOWED_TOOL_NEXT.get(prev)
-        if allowed is None:
+        if prev in self.TERMINAL_TOOL:
             return False, f"tool_request {tool_req_id} already terminal at {prev}"
 
+        allowed = self.ALLOWED_NEXT.get(prev, set())
         if current not in allowed:
             return False, f"invalid transition for {tool_req_id}: {prev} -> {current}"
 
