@@ -20,10 +20,13 @@ class WorldState:
         "task_success_rate": 0.0,
         "average_completion_time": 0.0,
         "resource_utilization": 0.0,
-        "duplicate_tool_calls": 0.0,
+        "duplicate_tool_calls": 0.0,  # legacy compatibility alias
+        "semantic_duplicate_work_count": 0.0,
         "communication_cost": 0.0,
         "events_processed": 0.0,
-        "retry_count": 0.0,
+        "retry_count": 0.0,  # legacy compatibility alias
+        "protocol_retry_count": 0.0,
         "memory_read_count": 0.0,
         "memory_write_count": 0.0,
+        "memory_invalidate_count": 0.0,
     })

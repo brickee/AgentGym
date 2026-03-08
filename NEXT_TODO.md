@@ -1,11 +1,11 @@
 # NEXT TODO
 
 ## Immediate (next session)
-1. Implement rate-limit semantics (token bucket / refill clock) on top of allocator.
-2. Add backpressure policy choices (`wait`, `drop`, `retry`) and expose in config.
-3. Add memory runtime hooks (read/write/invalidate events) beyond schema-only.
+1. Add a dedicated semantic-duplicate benchmark scenario (distinct request IDs for same task/tool intent) so `semantic_duplicate_work_count` is exercised in benchmark tables.
+2. Couple memory workload to task outcomes (cache hit/miss patterns affecting tool choice/latency), not just standalone memory events.
+3. Add dependency bootstrap (`pytest` + minimal dev extras) and a single CI command that runs smoke + unit checks.
 
 ## Quality tasks
-- Add `make smoke` or equivalent command (no external deps).
-- Add CI-friendly test path (install + run) to avoid `PYTHONPATH` friction.
-- Add minimal benchmark runner for 3 baselines with CSV output.
+- Add per-scenario delta table generator (baseline vs memory/semantic scenarios).
+- Add strict schema/versioning for benchmark CSV columns to avoid downstream parser drift.
+- Plan migration timeline for legacy aliases (`retry_count`, `duplicate_tool_calls`).

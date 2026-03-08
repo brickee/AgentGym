@@ -1,0 +1,44 @@
+from agentgym.core.simulator import Simulator
+from agentgym.envs.mvp_world import make_mvp_world
+
+
+def test_split_retry_vs_semantic_duplicate_metrics():
+    world = make_mvp_world()
+    sim = Simulator(world, enable_replay=False)
+
+    sim.schedule(0.0, 0, "task_created", "system", "run", {"task_id": "t1"})
+    # First request for intent (t1, search)
+    sim.schedule(0.1, 0, "tool_requested", "agent_0", "run", {
+        "task_id": "t1", "tool_request_id": "req_a", "tool_id": "search"
+    })
+    # Protocol retry of same request id should NOT count as semantic duplicate.
+    sim.schedule(0.11, 0, "tool_requested", "agent_0", "run", {
+        "task_id": "t1", "tool_request_id": "req_a", "tool_id": "search"
+    })
+    # Distinct request id for same intent should count as semantic duplicate.
+    sim.schedule(0.12, 0, "tool_requested", "agent_1", "run", {
+        "task_id": "t1", "tool_request_id": "req_b", "tool_id": "search"
+    })
+
+    sim.run(max_events=1000)
+
+    assert world.metrics["semantic_duplicate_work_count"] == 1.0
+    assert world.metrics["duplicate_tool_calls"] == 1.0  # compatibility alias
+    assert world.metrics["protocol_retry_count"] >= 0.0
+    assert world.metrics["retry_count"] == world.metrics["protocol_retry_count"]
+
+
+def test_memory_event_counters_and_invalidation():
+    world = make_mvp_world()
+    sim = Simulator(world, enable_replay=False)
+
+    sim.schedule(0.0, 0, "memory_write", "agent_0", "m", {"memory_id": "k1", "value": {"x": 1}})
+    sim.schedule(0.1, 0, "memory_read", "agent_1", "m", {"memory_id": "k1"})
+    sim.schedule(0.2, 0, "memory_invalidate", "agent_2", "m", {"memory_id": "k1"})
+
+    sim.run(max_events=20)
+
+    assert world.metrics["memory_write_count"] == 1.0
+    assert world.metrics["memory_read_count"] == 1.0
+    assert world.metrics["memory_invalidate_count"] == 1.0
+    assert "k1" not in world.memory_store

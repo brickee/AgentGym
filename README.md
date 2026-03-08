@@ -15,7 +15,7 @@ It targets three axes together:
 - Discrete Event Simulation (DES)
 - Shared resource contention and queueing
 - Baselines: independent, planner-worker, shared-memory
-- Core metrics: success rate, completion time, resource utilization, duplicate work, communication cost
+- Core metrics: success rate, completion time, resource utilization, protocol retries, semantic duplicate work, communication cost
 
 ## Project Management
 - `PLAN.md` — roadmap and milestones

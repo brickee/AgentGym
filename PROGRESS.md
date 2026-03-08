@@ -101,3 +101,28 @@
 - Current duplicate metric counts repeated `(task_id, tool_id)` requests including retry loops; next iteration should split into:
   - protocol-level retries
   - semantically duplicate work (distinct request IDs)
+
+## 2026-03-08 (Autopilot sprint — metric split + memory benchmark)
+- Split retry/duplicate signal into separate runtime metrics:
+  - `protocol_retry_count`
+  - `semantic_duplicate_work_count`
+- Preserved compatibility aliases:
+  - `retry_count` -> protocol retries
+  - `duplicate_tool_calls` -> semantic duplicate work
+- Added deterministic memory benchmark scenario (`memory_cycle`) with write/read/invalidate lifecycle coverage.
+- Expanded benchmark output columns to include split metrics + memory counters.
+- Updated benchmark summary script for scenario-aware aggregation.
+- Added targeted tests (`tests/test_metrics_split_and_memory.py`) for:
+  - retry vs semantic duplicate separation
+  - memory counter + invalidate behavior
+- Generated sprint artifact report: `artifacts/sprint_report_20260308.md`.
+
+### Validation
+- `PYTHONPATH=src python3 scripts/smoke_check.py` -> `SMOKE_CHECK_OK`
+- `PYTHONPATH=src python3 scripts/run_benchmark.py` -> `BENCHMARK_OK`
+- `python3 scripts/summarize_benchmark.py` -> `SUMMARY_OK`
+- `PYTHONPATH=src python3 -m pytest -q` failed: `No module named pytest` (environment blocker)
+
+### Self-review
+- Split metric semantics now avoid counting retries as duplicate work (resolves prior confound).
+- Memory workload currently validates event plumbing only; richer task-coupled memory scenarios remain for next pass.

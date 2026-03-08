@@ -38,7 +38,8 @@ class Simulator:
         )
         self._held_resources: Dict[str, List[str]] = {}
         self._retry_count_by_request: Dict[str, int] = {}
-        self._tool_call_seen: Set[Tuple[str, str]] = set()
+        self._seen_request_ids: Set[str] = set()
+        self._intent_to_request_ids: Dict[Tuple[str, str], Set[str]] = {}
 
     def schedule(self, sim_time: float, priority: int, event_type: str, actor_id: str, correlation_id: str, payload=None):
         if payload is None:
@@ -82,10 +83,13 @@ class Simulator:
         if not ok:
             raise ValueError(f"final validation failed: {msg}")
 
+        protocol_retry_count = float(sum(self._retry_count_by_request.values()))
         self.world.metrics["events_processed"] = float(processed)
         self.world.metrics["task_success_rate"] = compute_task_success_rate(self.world.tasks)
         self.world.metrics["average_completion_time"] = compute_average_completion_time(self.world.tasks)
-        self.world.metrics["retry_count"] = float(sum(self._retry_count_by_request.values()))
+        self.world.metrics["protocol_retry_count"] = protocol_retry_count
+        self.world.metrics["retry_count"] = protocol_retry_count  # legacy compatibility alias
+        self.world.metrics["duplicate_tool_calls"] = self.world.metrics["semantic_duplicate_work_count"]
         return processed
 
     def _retry_delay(self, req_id: str) -> float:
@@ -109,10 +113,16 @@ class Simulator:
             req_id = evt.payload["tool_request_id"]
             task_id = evt.payload.get("task_id", "")
             key = (task_id, tool_id)
-            if key in self._tool_call_seen:
-                self.world.metrics["duplicate_tool_calls"] += 1
-            else:
-                self._tool_call_seen.add(key)
+
+            if req_id not in self._seen_request_ids:
+                self._seen_request_ids.add(req_id)
+                if key not in self._intent_to_request_ids:
+                    self._intent_to_request_ids[key] = {req_id}
+                else:
+                    # Distinct request IDs for same intent => semantic duplicate work.
+                    if req_id not in self._intent_to_request_ids[key]:
+                        self.world.metrics["semantic_duplicate_work_count"] += 1
+                        self._intent_to_request_ids[key].add(req_id)
 
             ok, held, tag = self.allocator.allocate(tool_id, now=evt.sim_time)
             if ok:
@@ -167,4 +177,5 @@ class Simulator:
             mem_id = evt.payload.get("memory_id")
             if mem_id in self.world.memory_store:
                 del self.world.memory_store[mem_id]
+            self.world.metrics["memory_invalidate_count"] += 1
             return
