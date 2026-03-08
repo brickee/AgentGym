@@ -29,6 +29,12 @@ PYTHONPATH=src python3 scripts/run_benchmark.py
 python3 scripts/summarize_benchmark.py
 ```
 
+## Dev bootstrap
+```bash
+python3 -m pip install -e '.[dev]'  # installs pytest
+make ci                             # smoke + unit checks (pytest optional)
+```
+
 ## Benchmark notes
 - Scenarios: `baseline`, `semantic_overlap`, `memory_cycle`
 - Semantic duplicate-work is measured as distinct request IDs for the same `(task_id, tool_id)` intent.

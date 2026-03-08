@@ -174,3 +174,19 @@
 - `PYTHONPATH=src python3 scripts/smoke_check.py` -> `SMOKE_CHECK_OK`
 - `PYTHONPATH=src python3 scripts/run_benchmark.py` -> `BENCHMARK_OK`
 - `python3 scripts/summarize_benchmark.py` -> `SUMMARY_OK`
+
+## 2026-03-08 (Autopilot sprint — dev bootstrap + single CI entrypoint)
+- Added optional dev dependency group in `pyproject.toml`:
+  - `.[dev]` includes `pytest>=8`
+- Added `scripts/ci_check.sh` as a single deterministic CI entrypoint:
+  - always runs smoke
+  - runs `pytest -q` if available
+  - prints explicit skip note when pytest is absent
+- Added `Makefile` targets (`smoke`, `benchmark`, `summary`, `ci`) for standard workflow.
+- Updated README with bootstrap + `make ci` usage.
+
+### Validation
+- `PYTHONPATH=src python3 scripts/smoke_check.py` -> `SMOKE_CHECK_OK`
+- `PYTHONPATH=src python3 scripts/run_benchmark.py` -> `BENCHMARK_OK`
+- `python3 scripts/summarize_benchmark.py` -> `SUMMARY_OK`
+- `make ci` -> smoke passed, pytest gracefully skipped when unavailable
