@@ -102,12 +102,30 @@ def _schedule_memory_workload(sim: Simulator, scenario: str, policy, cfg: RunCon
 
 
 def _schedule_message_workload(sim: Simulator, policy, cfg: RunConfig, num_agents: int):
-    for msg in policy.plan_messages(num_tasks=cfg.num_tasks, num_agents=num_agents):
-        sim.schedule(msg.sent_at, 0, "send_message", msg.sender_id, "bench_msg", {
+    mode = None
+    if cfg.scenario == "comm_stress_broadcast":
+        mode = "broadcast"
+    elif cfg.scenario == "comm_stress_p2p":
+        mode = "p2p"
+
+    for idx, msg in enumerate(policy.plan_messages(num_tasks=cfg.num_tasks, num_agents=num_agents)):
+        payload = {
             "message_id": msg.message_id,
             "recipient_id": msg.recipient_id,
             "content": msg.content,
-        })
+        }
+        sent_at = msg.sent_at
+
+        if mode == "broadcast":
+            payload["recipient_id"] = None
+            payload["recipient_ids"] = [f"agent_{i}" for i in range(num_agents) if f"agent_{i}" != msg.sender_id]
+            payload["message_id"] = f"{msg.message_id}_b"
+            sent_at = msg.sent_at + (idx * 0.0001)
+        elif mode == "p2p":
+            payload["message_id"] = f"{msg.message_id}_p"
+            sent_at = msg.sent_at + (idx * 0.0001)
+
+        sim.schedule(sent_at, 0, "send_message", msg.sender_id, "bench_msg", payload)
 
 
 def run_once(cfg: RunConfig) -> Dict:
@@ -168,9 +186,13 @@ def run_once(cfg: RunConfig) -> Dict:
 
 def run_benchmark(out_csv: str = "artifacts/benchmark_v0.csv"):
     rows: List[dict] = []
-    scenarios = ["baseline", "semantic_overlap", "memory_cycle"] + [
-        f"memory_cycle@thr_{thr:.2f}" for thr in MEMORY_CONFIDENCE_SWEEP
-    ]
+    scenarios = [
+        "baseline",
+        "semantic_overlap",
+        "memory_cycle",
+        "comm_stress_p2p",
+        "comm_stress_broadcast",
+    ] + [f"memory_cycle@thr_{thr:.2f}" for thr in MEMORY_CONFIDENCE_SWEEP]
     for scenario in scenarios:
         for policy in ["independent", "planner_worker", "shared_memory"]:
             for seed in [1, 2, 3]:

@@ -36,7 +36,7 @@ make ci                             # smoke + unit checks (pytest optional)
 ```
 
 ## Benchmark notes
-- Scenarios: `baseline`, `semantic_overlap`, `memory_cycle`, plus confidence sweeps `memory_cycle@thr_0.50|0.70|0.90`
+- Scenarios: `baseline`, `semantic_overlap`, `memory_cycle`, communication stress (`comm_stress_p2p`, `comm_stress_broadcast`), plus confidence sweeps `memory_cycle@thr_0.50|0.70|0.90`
 - Semantic duplicate-work is measured as distinct request IDs for the same `(task_id, tool_id)` intent.
 - Memory-cycle now couples memory to runtime outcomes using hit/miss tool branching (`on_hit`/`on_miss`) with TTL + confidence semantics.
 - Communication metrics are event-level runtime counters:

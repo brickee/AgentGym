@@ -218,3 +218,18 @@
 - `PYTHONPATH=src python3 scripts/smoke_check.py` -> `SMOKE_CHECK_OK`
 - `PYTHONPATH=src python3 scripts/run_benchmark.py` -> `BENCHMARK_OK`
 - `python3 scripts/summarize_benchmark.py` -> `SUMMARY_OK`
+
+## 2026-03-08 (Autopilot sprint — deterministic communication stress scenarios)
+- Added deterministic communication stress scenarios for governance comparisons:
+  - `comm_stress_p2p`
+  - `comm_stress_broadcast`
+- Runner now rewrites message payload mode deterministically per scenario:
+  - p2p: point-to-point messages
+  - broadcast: one-to-many via `recipient_ids`
+- Reused existing communication accounting path in simulator (`communication_event_count`, `communication_cost`) to compare stress modes without changing task logic.
+- Updated README scenario list and NEXT_TODO priorities.
+
+### Validation
+- `PYTHONPATH=src python3 scripts/smoke_check.py` -> `SMOKE_CHECK_OK`
+- `PYTHONPATH=src python3 scripts/run_benchmark.py` -> `BENCHMARK_OK`
+- `python3 scripts/summarize_benchmark.py` -> `SUMMARY_OK`
