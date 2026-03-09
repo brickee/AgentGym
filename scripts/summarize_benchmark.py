@@ -31,6 +31,8 @@ REQUIRED_COLUMNS = {
     "replay_anomaly_score",
     "unfinished_task_count",
     "starvation_completion_p95_p50_gap",
+    "policy_deadlock_start_spread",
+    "policy_starvation_compute_share",
     "retry_count",
     "duplicate_tool_calls",
     "memory_write_count",
@@ -45,6 +47,17 @@ REQUIRED_COLUMNS = {
     "memory_stale_miss_rate",
     "memory_poison_exposure_rate",
     "sim_end_time",
+}
+
+NORMAL_SCENARIOS = {"baseline", "semantic_overlap", "memory_cycle"}
+STRESS_SCENARIOS = {
+    "resource_contention",
+    "deadlock_proxy",
+    "starvation_proxy",
+    "memory_poisoning",
+    "memory_staleness_heavy",
+    "comm_stress_p2p",
+    "comm_stress_broadcast",
 }
 
 
@@ -82,6 +95,8 @@ def _means(v):
         "replay_anomaly": v["replay_anomaly"] / n,
         "unfinished_tasks": v["unfinished_tasks"] / n,
         "starvation_gap": v["starvation_gap"] / n,
+        "deadlock_spread": v["deadlock_spread"] / n,
+        "starvation_compute_share": v["starvation_compute_share"] / n,
     }
 
 
@@ -132,6 +147,40 @@ def _recommend_policy(mean_by_key, scenario: str, policies: list[str]):
     return best_policy, (", ".join(flags) if flags else "none")
 
 
+def _robustness_row(normal: dict, stress: dict) -> dict:
+    lat_elasticity = stress["lat"] / max(0.0001, normal["lat"])
+    retry_elasticity = (stress["protocol_retry"] + 1.0) / (normal["protocol_retry"] + 1.0)
+    anomaly_elasticity = (stress["replay_anomaly"] + 1.0) / (normal["replay_anomaly"] + 1.0)
+    score = 100.0
+    score -= 18.0 * max(0.0, lat_elasticity - 1.0)
+    score -= 12.0 * max(0.0, retry_elasticity - 1.0)
+    score -= 10.0 * max(0.0, anomaly_elasticity - 1.0)
+    score -= 4.0 * stress["unfinished_tasks"]
+    score -= 3.0 * stress["mem_stale_rate"]
+    score -= 3.0 * stress["mem_poison_exposure"]
+    return {
+        "lat_elasticity": lat_elasticity,
+        "retry_elasticity": retry_elasticity,
+        "anomaly_elasticity": anomaly_elasticity,
+        "robustness": max(0.0, min(100.0, score)),
+    }
+
+
+def _policy_group_mean(mean_by_key: dict, scenarios: set[str], policy: str) -> dict:
+    keys = [k for k in mean_by_key if k[0] in scenarios and k[1] == policy]
+    if not keys:
+        return {"lat": 0.0, "protocol_retry": 0.0, "replay_anomaly": 0.0, "unfinished_tasks": 0.0, "mem_stale_rate": 0.0, "mem_poison_exposure": 0.0}
+    n = len(keys)
+    return {
+        "lat": sum(mean_by_key[k]["lat"] for k in keys) / n,
+        "protocol_retry": sum(mean_by_key[k]["protocol_retry"] for k in keys) / n,
+        "replay_anomaly": sum(mean_by_key[k]["replay_anomaly"] for k in keys) / n,
+        "unfinished_tasks": sum(mean_by_key[k]["unfinished_tasks"] for k in keys) / n,
+        "mem_stale_rate": sum(mean_by_key[k]["mem_stale_rate"] for k in keys) / n,
+        "mem_poison_exposure": sum(mean_by_key[k]["mem_poison_exposure"] for k in keys) / n,
+    }
+
+
 def main():
     agg = defaultdict(lambda: {
         "n": 0,
@@ -166,6 +215,8 @@ def main():
         "replay_anomaly": 0.0,
         "unfinished_tasks": 0.0,
         "starvation_gap": 0.0,
+        "deadlock_spread": 0.0,
+        "starvation_compute_share": 0.0,
     })
 
     schema_versions = set()
@@ -210,6 +261,8 @@ def main():
             agg[k]["replay_anomaly"] += float(row.get("replay_anomaly_score", 0.0))
             agg[k]["unfinished_tasks"] += float(row.get("unfinished_task_count", 0.0))
             agg[k]["starvation_gap"] += float(row.get("starvation_completion_p95_p50_gap", 0.0))
+            agg[k]["deadlock_spread"] += float(row.get("policy_deadlock_start_spread", 0.0))
+            agg[k]["starvation_compute_share"] += float(row.get("policy_starvation_compute_share", 1.0))
 
     mean_by_key = {k: _means(v) for k, v in agg.items()}
     scenarios = sorted({k[0] for k in agg})
@@ -304,6 +357,38 @@ def main():
             lines.append(
                 f"| {scenario} | {policy} | {m['mem_stale_rate']:.4f} | {m['mem_poison_exposure']:.4f} | {m['mem_poison_w']:.2f} | {m['mem_poison_r']:.2f} |"
             )
+
+    lines.extend([
+        "",
+        "## Stress knobs and elasticity (normal→stress)",
+        "",
+        "| policy | deadlock_start_spread | starvation_compute_share | latency_elasticity | retry_elasticity | anomaly_elasticity |",
+        "|---|---:|---:|---:|---:|---:|",
+    ])
+    for policy in policies:
+        deadlock = mean_by_key[("deadlock_proxy", policy)]
+        starvation = mean_by_key[("starvation_proxy", policy)]
+        normal = _policy_group_mean(mean_by_key, NORMAL_SCENARIOS, policy)
+        stress = _policy_group_mean(mean_by_key, STRESS_SCENARIOS, policy)
+        r = _robustness_row(normal, stress)
+        lines.append(
+            f"| {policy} | {deadlock['deadlock_spread']:.4f} | {starvation['starvation_compute_share']:.4f} | {r['lat_elasticity']:.3f} | {r['retry_elasticity']:.3f} | {r['anomaly_elasticity']:.3f} |"
+        )
+
+    lines.extend([
+        "",
+        "## Robustness scorecard (normal vs stress)",
+        "",
+        "| policy | normal_latency | stress_latency | normal_retries | stress_retries | stress_unfinished | stress_mem_stale_rate | stress_poison_exposure | robustness_score |",
+        "|---|---:|---:|---:|---:|---:|---:|---:|---:|",
+    ])
+    for policy in policies:
+        normal = _policy_group_mean(mean_by_key, NORMAL_SCENARIOS, policy)
+        stress = _policy_group_mean(mean_by_key, STRESS_SCENARIOS, policy)
+        r = _robustness_row(normal, stress)
+        lines.append(
+            f"| {policy} | {normal['lat']:.4f} | {stress['lat']:.4f} | {normal['protocol_retry']:.2f} | {stress['protocol_retry']:.2f} | {stress['unfinished_tasks']:.2f} | {stress['mem_stale_rate']:.4f} | {stress['mem_poison_exposure']:.4f} | {r['robustness']:.2f} |"
+        )
 
     lines.extend([
         "",

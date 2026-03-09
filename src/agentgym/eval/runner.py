@@ -20,7 +20,7 @@ POLICIES = {
 
 MEMORY_CONFIDENCE_SWEEP = [0.5, 0.7, 0.9]
 
-BENCHMARK_SCHEMA_VERSION = "1.4"
+BENCHMARK_SCHEMA_VERSION = "1.5"
 BENCHMARK_COLUMNS = [
     "schema_version",
     "scenario",
@@ -48,6 +48,8 @@ BENCHMARK_COLUMNS = [
     "replay_anomaly_score",
     "unfinished_task_count",
     "starvation_completion_p95_p50_gap",
+    "policy_deadlock_start_spread",
+    "policy_starvation_compute_share",
     "retry_count",
     "duplicate_tool_calls",
     "memory_write_count",
@@ -80,6 +82,38 @@ def _memory_threshold_for_scenario(scenario: str) -> float | None:
     if scenario == "memory_cycle":
         return None
     return None
+
+
+def _policy_stress_knobs(policy_name: str, scenario: str) -> dict:
+    defaults = {
+        "deadlock_start_spread": 0.0,
+        "starvation_compute_share": 1.0,
+        "deadlock_delay": 1.0,
+        "starvation_retry_max_delay": 6.0,
+    }
+    profiles = {
+        "independent": {
+            "deadlock_start_spread": 0.0,
+            "starvation_compute_share": 1.0,
+            "deadlock_delay": 1.2,
+            "starvation_retry_max_delay": 6.0,
+        },
+        "planner_worker": {
+            "deadlock_start_spread": 0.003,
+            "starvation_compute_share": 0.85,
+            "deadlock_delay": 0.8,
+            "starvation_retry_max_delay": 4.5,
+        },
+        "shared_memory": {
+            "deadlock_start_spread": 0.006,
+            "starvation_compute_share": 0.65,
+            "deadlock_delay": 0.6,
+            "starvation_retry_max_delay": 3.5,
+        },
+    }
+    out = dict(defaults)
+    out.update(profiles.get(policy_name, {}))
+    return out
 
 
 def _scenario_memory_workload(policy, scenario: str, cfg: RunConfig, num_agents: int) -> dict:
@@ -200,7 +234,7 @@ def _schedule_message_workload(sim: Simulator, policy, cfg: RunConfig, num_agent
         sim.schedule(sent_at, 0, "send_message", msg.sender_id, "bench_msg", payload)
 
 
-def _apply_scenario_world_overrides(world, scenario: str):
+def _apply_scenario_world_overrides(world, scenario: str, knobs: dict):
     if scenario == "resource_contention":
         world.resources = {
             "api_search": 1,
@@ -219,7 +253,7 @@ def _apply_scenario_world_overrides(world, scenario: str):
         }
         world.backpressure_policy = "drop"
         world.retry_mode = "fixed"
-        world.retry_base_delay = 1.0
+        world.retry_base_delay = float(knobs.get("deadlock_delay", 1.0))
 
     if scenario == "starvation_proxy":
         # Proxy for starvation: one slow constrained lane + aggressive retries.
@@ -231,33 +265,48 @@ def _apply_scenario_world_overrides(world, scenario: str):
         world.backpressure_policy = "retry"
         world.retry_mode = "exp"
         world.retry_base_delay = 0.2
-        world.retry_max_delay = 6.0
+        world.retry_max_delay = float(knobs.get("starvation_retry_max_delay", 6.0))
 
 
-def _apply_scenario_plan_overrides(cfg: RunConfig, plans):
+def _apply_scenario_plan_overrides(cfg: RunConfig, plans, knobs: dict):
     if cfg.scenario == "deadlock_proxy":
-        # Force lock-step contention on same scarce tool as deterministic deadlock proxy.
+        # Deterministic policy-specific contention shape to preserve diagnostics while differentiating policy behavior.
+        spread = float(knobs.get("deadlock_start_spread", 0.0))
         out = []
         for i, p in enumerate(plans):
+            if cfg.policy_name == "independent":
+                tool = "database"
+            elif cfg.policy_name == "planner_worker":
+                tool = "database" if i % 2 == 0 else "search"
+            else:
+                tool = "database" if i % 3 == 0 else "search"
             out.append(type(p)(
                 task_id=p.task_id,
                 tool_request_id=f"dl_{cfg.policy_name}_{i}",
                 agent_id=p.agent_id,
-                tool_id="database",
-                start_at=0.1,
+                tool_id=tool,
+                start_at=0.1 + (i * spread),
             ))
         return out
 
     if cfg.scenario == "starvation_proxy":
-        # One request starts first; rest pile up immediately after on compute.
+        # Deterministic policy-specific burst profiles under constrained compute.
+        compute_share = float(knobs.get("starvation_compute_share", 1.0))
+        spread = max(0.0001, float(knobs.get("deadlock_start_spread", 0.0)) * 1.5)
         out = []
         for i, p in enumerate(plans):
+            quota = int(round((i + 1) * compute_share))
+            use_compute = (quota > int(round(i * compute_share)))
+            if cfg.policy_name == "independent":
+                start_at = 0.05 if i == 0 else 0.051
+            else:
+                start_at = 0.05 + (i * spread)
             out.append(type(p)(
                 task_id=p.task_id,
                 tool_request_id=f"st_{cfg.policy_name}_{i}",
                 agent_id=p.agent_id,
-                tool_id="compute",
-                start_at=(0.05 if i == 0 else 0.051),
+                tool_id="compute" if use_compute else "search",
+                start_at=start_at,
             ))
         return out
 
@@ -270,12 +319,13 @@ def run_once(cfg: RunConfig) -> Dict:
     policy = POLICIES[cfg.policy_name]()
     for k, v in policy.world_overrides().items():
         setattr(world, k, v)
-    _apply_scenario_world_overrides(world, cfg.scenario)
+    stress_knobs = _policy_stress_knobs(cfg.policy_name, cfg.scenario)
+    _apply_scenario_world_overrides(world, cfg.scenario, stress_knobs)
 
     plans = policy.plan_requests(num_tasks=cfg.num_tasks, num_agents=len(world.agents))
     if cfg.scenario == "semantic_overlap":
         plans.extend(policy.plan_semantic_duplicates(num_tasks=cfg.num_tasks, num_agents=len(world.agents)))
-    plans = _apply_scenario_plan_overrides(cfg, plans)
+    plans = _apply_scenario_plan_overrides(cfg, plans, stress_knobs)
 
     sim = Simulator(world, enable_replay=True)
     coupled_tasks = _schedule_memory_workload(sim, cfg.scenario, policy, cfg)
@@ -356,6 +406,8 @@ def run_once(cfg: RunConfig) -> Dict:
         "replay_anomaly_score": int(replay_anomaly_score),
         "unfinished_task_count": int(unfinished_task_count),
         "starvation_completion_p95_p50_gap": float(starvation_gap),
+        "policy_deadlock_start_spread": float(stress_knobs["deadlock_start_spread"]),
+        "policy_starvation_compute_share": float(stress_knobs["starvation_compute_share"]),
         "retry_count": int(world.metrics["retry_count"]),
         "duplicate_tool_calls": int(world.metrics["duplicate_tool_calls"]),
         "memory_write_count": int(world.metrics["memory_write_count"]),

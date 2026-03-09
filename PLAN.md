@@ -36,6 +36,7 @@ Build a discrete-event multi-agent **organization simulator** for shared tools/r
 - Benchmark schema advanced to v1.4 with replay anomaly counters (`replay_retry_scheduled_count`, `replay_tool_failed_count`, `replay_anomaly_score`) and edge-case quantification (`unfinished_task_count`, `starvation_completion_p95_p50_gap`).
 - Memory poisoning/staleness calibration now uses minority-poison + moderate-confidence settings and staleness windows that preserve realistic hit/miss tradeoffs.
 - Added deterministic edge-case scenarios (`deadlock_proxy`, `starvation_proxy`) to quantify liveness and tail-latency failure proxies.
+- Stress proxies now include policy-specific deterministic knobs (deadlock start spread, starvation compute-share), with elasticity/robustness scorecards in summary for normal-vs-stress comparisons.
 
 ## Weekly Operating Rules
 1. Each day must end with PROGRESS + NEXT_TODO updates.

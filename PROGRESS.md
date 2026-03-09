@@ -345,3 +345,32 @@
 
 ### Notes
 - Proxy scenarios currently produce nearly identical stress signatures across policies due scenario-level forcing; this is intentional for deterministic liveness diagnostics but should be diversified next.
+
+## 2026-03-09 (Autopilot phase — policy-differentiated stress knobs + elasticity scorecards)
+- Diversified stress proxy behavior while preserving deterministic diagnostics by adding policy-specific knobs in benchmark runner:
+  - `policy_deadlock_start_spread`
+  - `policy_starvation_compute_share`
+- Deadlock/starvation plan overrides are now policy-shaped (not one-size-forced), yielding differentiated stress signatures across baselines.
+- Added scenario-aware world knob wiring for proxy-specific retry timings by policy profile.
+- Advanced benchmark schema to `1.5` and emitted new stress-knob columns.
+- Extended summary report with:
+  - per-policy stress knob table
+  - per-policy elasticity report (`latency`, `retry`, `anomaly` elasticities normal→stress)
+  - robustness scorecard across normal vs stress scenario groups.
+- Added regression coverage in `tests/test_benchmark_scenarios.py` to assert policy differentiation under proxy scenarios.
+
+### Validation (required chain)
+- `PYTHONPATH=src python3 scripts/smoke_check.py` ✅
+- `PYTHONPATH=src python3 scripts/run_benchmark.py` ✅
+- `python3 scripts/summarize_benchmark.py` ✅
+- `./scripts/ci_check.sh` ✅ (`18 passed`)
+
+### Metric highlights (policy differentiation under stress)
+- `deadlock_proxy` now separates policy signatures via deterministic spread knobs:
+  - independent: unfinished `11`, replay anomaly `11`
+  - planner_worker/shared_memory: unfinished `10`, replay anomaly `10`
+- `starvation_proxy` now shows stronger policy separation:
+  - independent: avg completion `76.05`, retries `165`, anomaly `33`
+  - planner_worker: avg completion `57.35`, retries `156`, anomaly `31`
+  - shared_memory: avg completion `34.92`, retries `117`, anomaly `23`
+- Robustness scorecard (normal vs stress aggregate) now exported in summary for quick policy posture comparison.
