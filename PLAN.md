@@ -33,8 +33,9 @@ Build a discrete-event multi-agent **organization simulator** for shared tools/r
 
 ## Current Phase Focus (2026-03-09)
 - M2 hardening pass in progress: replay analytics decomposition, communication metric normalization, and stricter invariant checks.
-- Benchmark schema advanced to v1.3 with memory robustness metrics (`memory_poisoned_*`, stale/poison rates).
-- New stress scenarios emphasize memory poisoning and staleness failure modes, with summary-level recommendation heuristics.
+- Benchmark schema advanced to v1.4 with replay anomaly counters (`replay_retry_scheduled_count`, `replay_tool_failed_count`, `replay_anomaly_score`) and edge-case quantification (`unfinished_task_count`, `starvation_completion_p95_p50_gap`).
+- Memory poisoning/staleness calibration now uses minority-poison + moderate-confidence settings and staleness windows that preserve realistic hit/miss tradeoffs.
+- Added deterministic edge-case scenarios (`deadlock_proxy`, `starvation_proxy`) to quantify liveness and tail-latency failure proxies.
 
 ## Weekly Operating Rules
 1. Each day must end with PROGRESS + NEXT_TODO updates.

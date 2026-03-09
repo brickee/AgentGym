@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import List, Dict
 
 from agentgym.core.simulator import Simulator
-from agentgym.core.replay import replay_duplicate_decomposition, replay_invariant_precheck
+from agentgym.core.replay import replay_duplicate_decomposition, replay_invariant_precheck, replay_event_distribution
 from agentgym.envs.mvp_world import make_mvp_world
 from agentgym.eval.metrics import compute_normalized_metrics
 from agentgym.policies.independent import IndependentPolicy
@@ -20,7 +20,7 @@ POLICIES = {
 
 MEMORY_CONFIDENCE_SWEEP = [0.5, 0.7, 0.9]
 
-BENCHMARK_SCHEMA_VERSION = "1.3"
+BENCHMARK_SCHEMA_VERSION = "1.4"
 BENCHMARK_COLUMNS = [
     "schema_version",
     "scenario",
@@ -43,6 +43,11 @@ BENCHMARK_COLUMNS = [
     "replay_violation_count",
     "replay_duplicate_task_count",
     "replay_top_duplicate_agent_count",
+    "replay_retry_scheduled_count",
+    "replay_tool_failed_count",
+    "replay_anomaly_score",
+    "unfinished_task_count",
+    "starvation_completion_p95_p50_gap",
     "retry_count",
     "duplicate_tool_calls",
     "memory_write_count",
@@ -95,20 +100,21 @@ def _scenario_memory_workload(policy, scenario: str, cfg: RunConfig, num_agents:
         poisoned_reads = []
         for i, w in enumerate(base.get("writes", [])):
             w2 = dict(w)
-            if i % 2 == 0:
+            if i % 3 == 0:
+                # Realistic poisoning: minority of writes, high confidence, moderate TTL.
                 w2["poisoned"] = True
-                w2["confidence"] = 0.98
-                w2["ttl"] = max(3.0, float(w2.get("ttl", 1.0)))
+                w2["confidence"] = 0.88
+                w2["ttl"] = max(2.0, float(w2.get("ttl", 1.0)))
                 w2["value"] = {"preferred_tool": "compute", "tag": "poisoned"}
             poisoned_writes.append(w2)
 
         for i, r in enumerate(base.get("reads", [])):
             r2 = dict(r)
-            if i % 2 == 0:
-                # If poisoned memory is believed, choose expensive wrong path.
+            if i % 3 == 0:
+                # Poisoned hits tilt toward expensive path; misses recover to safer path.
                 r2["on_hit"] = {"tool_id": "compute", "tool_request_id": f"poison_hit_{cfg.policy_name}_{i}"}
                 r2["on_miss"] = {"tool_id": "search", "tool_request_id": f"poison_miss_{cfg.policy_name}_{i}"}
-                r2["min_confidence"] = 0.9
+                r2["min_confidence"] = 0.82
             poisoned_reads.append(r2)
 
         base["writes"] = poisoned_writes
@@ -119,12 +125,13 @@ def _scenario_memory_workload(policy, scenario: str, cfg: RunConfig, num_agents:
         stale_reads = []
         for i, w in enumerate(base.get("writes", [])):
             w2 = dict(w)
-            w2["ttl"] = 0.01 + (i * 0.002)
+            # Keep some chance of freshness while still stressing stale-path handling.
+            w2["ttl"] = 0.045 + (i * 0.008)
             stale_writes.append(w2)
 
         for i, r in enumerate(base.get("reads", [])):
             r2 = dict(r)
-            r2["at"] = max(float(r2.get("at", 0.1)), 0.2 + i * 0.03)
+            r2["at"] = max(float(r2.get("at", 0.1)), 0.11 + i * 0.03)
             r2["on_miss"] = {"tool_id": "compute", "tool_request_id": f"stale_miss_{cfg.policy_name}_{i}"}
             stale_reads.append(r2)
 
@@ -203,6 +210,59 @@ def _apply_scenario_world_overrides(world, scenario: str):
         world.retry_base_delay = 0.5
         world.retry_mode = "exp"
 
+    if scenario == "deadlock_proxy":
+        # Proxy for circular wait: a near-serialized world with drop-on-pressure.
+        world.resources = {
+            "api_search": 1,
+            "compute_slot": 1,
+            "db_lock": 1,
+        }
+        world.backpressure_policy = "drop"
+        world.retry_mode = "fixed"
+        world.retry_base_delay = 1.0
+
+    if scenario == "starvation_proxy":
+        # Proxy for starvation: one slow constrained lane + aggressive retries.
+        world.resources = {
+            "api_search": 1,
+            "compute_slot": 1,
+            "db_lock": 1,
+        }
+        world.backpressure_policy = "retry"
+        world.retry_mode = "exp"
+        world.retry_base_delay = 0.2
+        world.retry_max_delay = 6.0
+
+
+def _apply_scenario_plan_overrides(cfg: RunConfig, plans):
+    if cfg.scenario == "deadlock_proxy":
+        # Force lock-step contention on same scarce tool as deterministic deadlock proxy.
+        out = []
+        for i, p in enumerate(plans):
+            out.append(type(p)(
+                task_id=p.task_id,
+                tool_request_id=f"dl_{cfg.policy_name}_{i}",
+                agent_id=p.agent_id,
+                tool_id="database",
+                start_at=0.1,
+            ))
+        return out
+
+    if cfg.scenario == "starvation_proxy":
+        # One request starts first; rest pile up immediately after on compute.
+        out = []
+        for i, p in enumerate(plans):
+            out.append(type(p)(
+                task_id=p.task_id,
+                tool_request_id=f"st_{cfg.policy_name}_{i}",
+                agent_id=p.agent_id,
+                tool_id="compute",
+                start_at=(0.05 if i == 0 else 0.051),
+            ))
+        return out
+
+    return plans
+
 
 def run_once(cfg: RunConfig) -> Dict:
     world = make_mvp_world(seed=cfg.seed)
@@ -215,6 +275,7 @@ def run_once(cfg: RunConfig) -> Dict:
     plans = policy.plan_requests(num_tasks=cfg.num_tasks, num_agents=len(world.agents))
     if cfg.scenario == "semantic_overlap":
         plans.extend(policy.plan_semantic_duplicates(num_tasks=cfg.num_tasks, num_agents=len(world.agents)))
+    plans = _apply_scenario_plan_overrides(cfg, plans)
 
     sim = Simulator(world, enable_replay=True)
     coupled_tasks = _schedule_memory_workload(sim, cfg.scenario, policy, cfg)
@@ -238,11 +299,35 @@ def run_once(cfg: RunConfig) -> Dict:
     events = sim.recorder.events if sim.recorder else []
     replay_violations = replay_invariant_precheck(events)
     replay_dups = replay_duplicate_decomposition(events)
+    replay_dist = replay_event_distribution(events)
     top_dup_agent = max(replay_dups["by_agent"].values()) if replay_dups["by_agent"] else 0
+    replay_retry_scheduled_count = int(replay_dist.get("retry_scheduled", 0))
+    replay_tool_failed_count = int(replay_dist.get("tool_failed", 0))
     norm = compute_normalized_metrics(world.metrics, cfg.num_tasks)
 
     memory_reads = max(1, int(world.metrics["memory_read_count"]))
     memory_hits = max(1, int(world.metrics["memory_hit_count"]))
+
+    completions = sorted([
+        float(t.get("completed_at", t.get("created_at", 0.0))) - float(t.get("created_at", 0.0))
+        for t in world.tasks.values()
+        if t.get("status") == "done"
+    ])
+    if completions:
+        p50_idx = int(0.5 * (len(completions) - 1))
+        p95_idx = int(0.95 * (len(completions) - 1))
+        starvation_gap = round(completions[p95_idx] - completions[p50_idx], 4)
+    else:
+        starvation_gap = 0.0
+
+    unfinished_task_count = int(sum(1 for t in world.tasks.values() if t.get("status") != "done"))
+    replay_anomaly_score = int(
+        len(replay_violations)
+        + sum(replay_dups["by_task"].values())
+        + top_dup_agent
+        + (replay_retry_scheduled_count // 5)
+        + replay_tool_failed_count
+    )
 
     return {
         "schema_version": BENCHMARK_SCHEMA_VERSION,
@@ -266,6 +351,11 @@ def run_once(cfg: RunConfig) -> Dict:
         "replay_violation_count": int(len(replay_violations)),
         "replay_duplicate_task_count": int(sum(replay_dups["by_task"].values())),
         "replay_top_duplicate_agent_count": int(top_dup_agent),
+        "replay_retry_scheduled_count": int(replay_retry_scheduled_count),
+        "replay_tool_failed_count": int(replay_tool_failed_count),
+        "replay_anomaly_score": int(replay_anomaly_score),
+        "unfinished_task_count": int(unfinished_task_count),
+        "starvation_completion_p95_p50_gap": float(starvation_gap),
         "retry_count": int(world.metrics["retry_count"]),
         "duplicate_tool_calls": int(world.metrics["duplicate_tool_calls"]),
         "memory_write_count": int(world.metrics["memory_write_count"]),
@@ -294,6 +384,8 @@ def run_benchmark(out_csv: str = "artifacts/benchmark_v0.csv"):
         "comm_stress_p2p",
         "comm_stress_broadcast",
         "resource_contention",
+        "deadlock_proxy",
+        "starvation_proxy",
     ] + [f"memory_cycle@thr_{thr:.2f}" for thr in MEMORY_CONFIDENCE_SWEEP]
     for scenario in scenarios:
         for policy in ["independent", "planner_worker", "shared_memory"]:

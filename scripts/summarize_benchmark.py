@@ -26,6 +26,11 @@ REQUIRED_COLUMNS = {
     "replay_violation_count",
     "replay_duplicate_task_count",
     "replay_top_duplicate_agent_count",
+    "replay_retry_scheduled_count",
+    "replay_tool_failed_count",
+    "replay_anomaly_score",
+    "unfinished_task_count",
+    "starvation_completion_p95_p50_gap",
     "retry_count",
     "duplicate_tool_calls",
     "memory_write_count",
@@ -72,6 +77,11 @@ def _means(v):
         "replay_viol": v["replay_viol"] / n,
         "replay_dup_task": v["replay_dup_task"] / n,
         "replay_top_dup_agent": v["replay_top_dup_agent"] / n,
+        "replay_retry_sched": v["replay_retry_sched"] / n,
+        "replay_tool_failed": v["replay_tool_failed"] / n,
+        "replay_anomaly": v["replay_anomaly"] / n,
+        "unfinished_tasks": v["unfinished_tasks"] / n,
+        "starvation_gap": v["starvation_gap"] / n,
     }
 
 
@@ -91,11 +101,13 @@ def _recommend_policy(mean_by_key, scenario: str, policies: list[str]):
             risk_penalty += 3.0
         if m["mem_poison_exposure"] > 0.2:
             risk_penalty += 3.0
+        anomaly_penalty = 0.15 * m["replay_anomaly"] + 0.6 * m["unfinished_tasks"] + 0.12 * m["starvation_gap"]
         score = (
             m["lat"]
             + 0.08 * m["protocol_retry"]
             + 0.12 * m["semantic_dup"]
             + 0.03 * m["comm_cost"]
+            + anomaly_penalty
             + risk_penalty
         )
         flags = []
@@ -107,6 +119,12 @@ def _recommend_policy(mean_by_key, scenario: str, policies: list[str]):
             flags.append("stale_memory_risk")
         if m["mem_poison_exposure"] > 0.2:
             flags.append("poisoning_risk")
+        if m["replay_anomaly"] > 3.0:
+            flags.append("replay_anomaly_risk")
+        if m["unfinished_tasks"] > 0.0:
+            flags.append("unfinished_task_risk")
+        if m["starvation_gap"] > 6.0:
+            flags.append("starvation_tail_risk")
         candidates.append((score, p, flags))
 
     candidates.sort(key=lambda x: x[0])
@@ -143,6 +161,11 @@ def main():
         "replay_viol": 0.0,
         "replay_dup_task": 0.0,
         "replay_top_dup_agent": 0.0,
+        "replay_retry_sched": 0.0,
+        "replay_tool_failed": 0.0,
+        "replay_anomaly": 0.0,
+        "unfinished_tasks": 0.0,
+        "starvation_gap": 0.0,
     })
 
     schema_versions = set()
@@ -182,6 +205,11 @@ def main():
             agg[k]["replay_viol"] += float(row.get("replay_violation_count", 0.0))
             agg[k]["replay_dup_task"] += float(row.get("replay_duplicate_task_count", 0.0))
             agg[k]["replay_top_dup_agent"] += float(row.get("replay_top_duplicate_agent_count", 0.0))
+            agg[k]["replay_retry_sched"] += float(row.get("replay_retry_scheduled_count", 0.0))
+            agg[k]["replay_tool_failed"] += float(row.get("replay_tool_failed_count", 0.0))
+            agg[k]["replay_anomaly"] += float(row.get("replay_anomaly_score", 0.0))
+            agg[k]["unfinished_tasks"] += float(row.get("unfinished_task_count", 0.0))
+            agg[k]["starvation_gap"] += float(row.get("starvation_completion_p95_p50_gap", 0.0))
 
     mean_by_key = {k: _means(v) for k, v in agg.items()}
     scenarios = sorted({k[0] for k in agg})
@@ -295,14 +323,14 @@ def main():
         "",
         "## Replay invariant + duplicate decomposition",
         "",
-        "| scenario | policy | replay_violations | replay_duplicate_tasks | replay_top_duplicate_agent |",
-        "|---|---|---:|---:|---:|",
+        "| scenario | policy | replay_violations | replay_duplicate_tasks | replay_top_duplicate_agent | replay_retry_scheduled | replay_tool_failed | replay_anomaly_score | unfinished_tasks | starvation_p95_p50_gap |",
+        "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|",
     ])
     for scenario in scenarios:
         for policy in policies:
             m = mean_by_key[(scenario, policy)]
             lines.append(
-                f"| {scenario} | {policy} | {m['replay_viol']:.2f} | {m['replay_dup_task']:.2f} | {m['replay_top_dup_agent']:.2f} |"
+                f"| {scenario} | {policy} | {m['replay_viol']:.2f} | {m['replay_dup_task']:.2f} | {m['replay_top_dup_agent']:.2f} | {m['replay_retry_sched']:.2f} | {m['replay_tool_failed']:.2f} | {m['replay_anomaly']:.2f} | {m['unfinished_tasks']:.2f} | {m['starvation_gap']:.2f} |"
             )
 
     OUT_MD.write_text("\n".join(lines), encoding="utf-8")

@@ -318,3 +318,30 @@
 
 ### Blockers
 - Global environment still lacks system pytest; local fallback works, but direct `python3 -m pytest -q` remains unavailable unless local path is provided.
+
+## 2026-03-09 (Autopilot phase — memory calibration + replay anomalies + edge proxies)
+- Calibrated memory stress knobs for clearer but realistic tradeoffs:
+  - `memory_poisoning`: poison only a minority of writes (`i % 3 == 0`), confidence softened to `0.88`, and hit gate set to `min_confidence=0.82`.
+  - `memory_staleness_heavy`: TTL/read timings adjusted to induce high stale pressure without making every read trivially stale.
+- Added deterministic edge-case benchmark scenarios:
+  - `deadlock_proxy`: serialized resources + `drop` backpressure to quantify liveness collapse (`unfinished_task_count`, `tool_failed`).
+  - `starvation_proxy`: serialized compute lane + aggressive exponential retries to quantify tail-latency inflation.
+- Added replay-derived anomaly counters in benchmark output:
+  - `replay_retry_scheduled_count`, `replay_tool_failed_count`, `replay_anomaly_score`.
+- Wired new anomaly + liveness/tail counters into summary recommendation scoring and risk flags.
+- Added targeted tests in `tests/test_benchmark_scenarios.py`.
+
+### Validation (required chain)
+- `PYTHONPATH=src python3 scripts/smoke_check.py` ✅
+- `PYTHONPATH=src python3 scripts/run_benchmark.py` ✅
+- `python3 scripts/summarize_benchmark.py` ✅
+- `./scripts/ci_check.sh` ✅ (`17 passed`)
+
+### Metric highlights (shared_memory deltas vs `memory_cycle`)
+- `memory_poisoning`: poison exposure `+0.50`, avg completion `+2.00`, starvation gap `+7.53`.
+- `memory_staleness_heavy`: stale miss rate `+1.00`, retries `+12`, replay anomaly `+2`, starvation gap `+39.60`.
+- `deadlock_proxy`: unfinished tasks `+11`, tool_failed `+11`, replay anomaly `+6` (liveness failure signature).
+- `starvation_proxy`: retries `+140`, replay anomaly `+28`, starvation gap `+48.90`, avg completion `+66.54`.
+
+### Notes
+- Proxy scenarios currently produce nearly identical stress signatures across policies due scenario-level forcing; this is intentional for deterministic liveness diagnostics but should be diversified next.
