@@ -374,3 +374,26 @@
   - planner_worker: avg completion `57.35`, retries `156`, anomaly `31`
   - shared_memory: avg completion `34.92`, retries `117`, anomaly `23`
 - Robustness scorecard (normal vs stress aggregate) now exported in summary for quick policy posture comparison.
+
+## 2026-03-09 (Autopilot phase — CI guardrails + seed-CI recommendations + robustness presets)
+- Added seed-level 95% confidence intervals in `scripts/summarize_benchmark.py` for:
+  - `replay_anomaly_score`
+  - `unfinished_task_count`
+  - `starvation_completion_p95_p50_gap`
+- Integrated CI-aware recommendation scoring with variance penalties from CI upper bounds.
+- Added explicit robustness scoring presets in summary:
+  - `latency_first`
+  - `reliability_first`
+- Reworked CI benchmark guardrails in `scripts/ci_check.sh` with scenario-specific non-proxy anomaly budgets over benchmark CSV outputs.
+- Regenerated benchmark and summary artifacts after changes.
+
+### Validation (required chain)
+- `PYTHONPATH=src python3 scripts/smoke_check.py` ✅
+- `PYTHONPATH=src python3 scripts/run_benchmark.py` ✅
+- `python3 scripts/summarize_benchmark.py` ✅
+- `./scripts/ci_check.sh` ✅ (`18 passed`, guardrails `CI_OK`)
+
+### Metric highlights
+- Seed-level CI section is now emitted for every `(scenario, policy)` tuple, exposing variance in replay/liveness metrics directly in markdown report.
+- Robustness preset table now gives policy rankings under two optimization goals (latency-dominant vs reliability-dominant) without rerunning benchmarks.
+- Non-proxy guardrails now fail CI on anomaly-budget regressions while excluding proxy stress scenarios intended to break liveness.

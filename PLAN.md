@@ -37,6 +37,7 @@ Build a discrete-event multi-agent **organization simulator** for shared tools/r
 - Memory poisoning/staleness calibration now uses minority-poison + moderate-confidence settings and staleness windows that preserve realistic hit/miss tradeoffs.
 - Added deterministic edge-case scenarios (`deadlock_proxy`, `starvation_proxy`) to quantify liveness and tail-latency failure proxies.
 - Stress proxies now include policy-specific deterministic knobs (deadlock start spread, starvation compute-share), with elasticity/robustness scorecards in summary for normal-vs-stress comparisons.
+- Summary now includes seed-level confidence intervals for replay/liveness and preset-based robustness scorecards (`latency_first`, `reliability_first`), while CI enforces scenario-level non-proxy anomaly budgets.
 
 ## Weekly Operating Rules
 1. Each day must end with PROGRESS + NEXT_TODO updates.

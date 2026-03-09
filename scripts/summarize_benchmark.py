@@ -1,4 +1,5 @@
 import csv
+import math
 from collections import defaultdict
 from pathlib import Path
 
@@ -61,6 +62,26 @@ STRESS_SCENARIOS = {
 }
 
 
+ROBUSTNESS_PRESETS = {
+    "latency_first": {
+        "latency_elasticity": 30.0,
+        "retry_elasticity": 10.0,
+        "anomaly_elasticity": 8.0,
+        "unfinished_tasks": 3.0,
+        "mem_stale_rate": 2.0,
+        "mem_poison_exposure": 2.0,
+    },
+    "reliability_first": {
+        "latency_elasticity": 12.0,
+        "retry_elasticity": 18.0,
+        "anomaly_elasticity": 22.0,
+        "unfinished_tasks": 9.0,
+        "mem_stale_rate": 6.0,
+        "mem_poison_exposure": 7.0,
+    },
+}
+
+
 def _means(v):
     n = max(1, int(v["n"]))
     return {
@@ -107,22 +128,60 @@ def _memory_threshold(scenario: str) -> float | None:
     return None
 
 
-def _recommend_policy(mean_by_key, scenario: str, policies: list[str]):
+def _ci95(values: list[float]) -> tuple[float, float, float]:
+    if not values:
+        return (0.0, 0.0, 0.0)
+    n = len(values)
+    mean = sum(values) / n
+    if n < 2:
+        return (mean, mean, mean)
+    var = sum((v - mean) ** 2 for v in values) / (n - 1)
+    se = math.sqrt(var / n)
+    z = 1.96
+    return (mean, mean - z * se, mean + z * se)
+
+
+def _robustness_row(normal: dict, stress: dict, preset: str = "latency_first") -> dict:
+    lat_elasticity = stress["lat"] / max(0.0001, normal["lat"])
+    retry_elasticity = (stress["protocol_retry"] + 1.0) / (normal["protocol_retry"] + 1.0)
+    anomaly_elasticity = (stress["replay_anomaly"] + 1.0) / (normal["replay_anomaly"] + 1.0)
+    w = ROBUSTNESS_PRESETS[preset]
+    score = 100.0
+    score -= w["latency_elasticity"] * max(0.0, lat_elasticity - 1.0)
+    score -= w["retry_elasticity"] * max(0.0, retry_elasticity - 1.0)
+    score -= w["anomaly_elasticity"] * max(0.0, anomaly_elasticity - 1.0)
+    score -= w["unfinished_tasks"] * stress["unfinished_tasks"]
+    score -= w["mem_stale_rate"] * stress["mem_stale_rate"]
+    score -= w["mem_poison_exposure"] * stress["mem_poison_exposure"]
+    return {
+        "lat_elasticity": lat_elasticity,
+        "retry_elasticity": retry_elasticity,
+        "anomaly_elasticity": anomaly_elasticity,
+        "robustness": max(0.0, min(100.0, score)),
+    }
+
+
+def _recommend_policy(mean_by_key, ci_by_key, scenario: str, policies: list[str]):
     candidates = []
     for p in policies:
         m = mean_by_key[(scenario, p)]
+        ci = ci_by_key[(scenario, p)]
         risk_penalty = 0.0
         if m["mem_stale_rate"] > 0.3:
             risk_penalty += 3.0
         if m["mem_poison_exposure"] > 0.2:
             risk_penalty += 3.0
         anomaly_penalty = 0.15 * m["replay_anomaly"] + 0.6 * m["unfinished_tasks"] + 0.12 * m["starvation_gap"]
+        ci_penalty = 0.08 * max(0.0, ci["replay_anomaly"][2] - m["replay_anomaly"])
+        ci_penalty += 0.6 * max(0.0, ci["unfinished_tasks"][2] - m["unfinished_tasks"])
+        ci_penalty += 0.12 * max(0.0, ci["starvation_gap"][2] - m["starvation_gap"])
         score = (
             m["lat"]
             + 0.08 * m["protocol_retry"]
             + 0.12 * m["semantic_dup"]
             + 0.03 * m["comm_cost"]
             + anomaly_penalty
+            + ci_penalty
             + risk_penalty
         )
         flags = []
@@ -140,30 +199,15 @@ def _recommend_policy(mean_by_key, scenario: str, policies: list[str]):
             flags.append("unfinished_task_risk")
         if m["starvation_gap"] > 6.0:
             flags.append("starvation_tail_risk")
+        if ci["replay_anomaly"][2] - m["replay_anomaly"] > 0.75:
+            flags.append("high_anomaly_variance")
+        if ci["unfinished_tasks"][2] - m["unfinished_tasks"] > 0.25:
+            flags.append("unfinished_variance")
         candidates.append((score, p, flags))
 
     candidates.sort(key=lambda x: x[0])
     _, best_policy, flags = candidates[0]
     return best_policy, (", ".join(flags) if flags else "none")
-
-
-def _robustness_row(normal: dict, stress: dict) -> dict:
-    lat_elasticity = stress["lat"] / max(0.0001, normal["lat"])
-    retry_elasticity = (stress["protocol_retry"] + 1.0) / (normal["protocol_retry"] + 1.0)
-    anomaly_elasticity = (stress["replay_anomaly"] + 1.0) / (normal["replay_anomaly"] + 1.0)
-    score = 100.0
-    score -= 18.0 * max(0.0, lat_elasticity - 1.0)
-    score -= 12.0 * max(0.0, retry_elasticity - 1.0)
-    score -= 10.0 * max(0.0, anomaly_elasticity - 1.0)
-    score -= 4.0 * stress["unfinished_tasks"]
-    score -= 3.0 * stress["mem_stale_rate"]
-    score -= 3.0 * stress["mem_poison_exposure"]
-    return {
-        "lat_elasticity": lat_elasticity,
-        "retry_elasticity": retry_elasticity,
-        "anomaly_elasticity": anomaly_elasticity,
-        "robustness": max(0.0, min(100.0, score)),
-    }
 
 
 def _policy_group_mean(mean_by_key: dict, scenarios: set[str], policy: str) -> dict:
@@ -219,6 +263,12 @@ def main():
         "starvation_compute_share": 0.0,
     })
 
+    seed_metrics = defaultdict(lambda: {
+        "replay_anomaly": [],
+        "unfinished_tasks": [],
+        "starvation_gap": [],
+    })
+
     schema_versions = set()
     with CSV_PATH.open("r", encoding="utf-8") as f:
         reader = csv.DictReader(f)
@@ -264,7 +314,20 @@ def main():
             agg[k]["deadlock_spread"] += float(row.get("policy_deadlock_start_spread", 0.0))
             agg[k]["starvation_compute_share"] += float(row.get("policy_starvation_compute_share", 1.0))
 
+            seed_metrics[k]["replay_anomaly"].append(float(row.get("replay_anomaly_score", 0.0)))
+            seed_metrics[k]["unfinished_tasks"].append(float(row.get("unfinished_task_count", 0.0)))
+            seed_metrics[k]["starvation_gap"].append(float(row.get("starvation_completion_p95_p50_gap", 0.0)))
+
     mean_by_key = {k: _means(v) for k, v in agg.items()}
+    ci_by_key = {
+        k: {
+            "replay_anomaly": _ci95(v["replay_anomaly"]),
+            "unfinished_tasks": _ci95(v["unfinished_tasks"]),
+            "starvation_gap": _ci95(v["starvation_gap"]),
+        }
+        for k, v in seed_metrics.items()
+    }
+
     scenarios = sorted({k[0] for k in agg})
     policies = sorted({k[1] for k in agg})
 
@@ -285,13 +348,31 @@ def main():
 
     lines.extend([
         "",
+        "## Seed-level confidence intervals (95% CI)",
+        "",
+        "| scenario | policy | replay_anomaly (mean [low, high]) | unfinished_tasks (mean [low, high]) | starvation_gap (mean [low, high]) |",
+        "|---|---|---|---|---|",
+    ])
+    for scenario in scenarios:
+        for policy in policies:
+            c = ci_by_key[(scenario, policy)]
+            lines.append(
+                "| "
+                f"{scenario} | {policy} | "
+                f"{c['replay_anomaly'][0]:.2f} [{c['replay_anomaly'][1]:.2f}, {c['replay_anomaly'][2]:.2f}] | "
+                f"{c['unfinished_tasks'][0]:.2f} [{c['unfinished_tasks'][1]:.2f}, {c['unfinished_tasks'][2]:.2f}] | "
+                f"{c['starvation_gap'][0]:.2f} [{c['starvation_gap'][1]:.2f}, {c['starvation_gap'][2]:.2f}] |"
+            )
+
+    lines.extend([
+        "",
         "## Concise recommendation by scenario",
         "",
         "| scenario | recommended_policy | tradeoff_flags |",
         "|---|---|---|",
     ])
     for scenario in scenarios:
-        rec, flags = _recommend_policy(mean_by_key, scenario, policies)
+        rec, flags = _recommend_policy(mean_by_key, ci_by_key, scenario, policies)
         lines.append(f"| {scenario} | {rec} | {flags} |")
 
     lines.extend([
@@ -370,25 +451,26 @@ def main():
         starvation = mean_by_key[("starvation_proxy", policy)]
         normal = _policy_group_mean(mean_by_key, NORMAL_SCENARIOS, policy)
         stress = _policy_group_mean(mean_by_key, STRESS_SCENARIOS, policy)
-        r = _robustness_row(normal, stress)
+        r = _robustness_row(normal, stress, preset="latency_first")
         lines.append(
             f"| {policy} | {deadlock['deadlock_spread']:.4f} | {starvation['starvation_compute_share']:.4f} | {r['lat_elasticity']:.3f} | {r['retry_elasticity']:.3f} | {r['anomaly_elasticity']:.3f} |"
         )
 
     lines.extend([
         "",
-        "## Robustness scorecard (normal vs stress)",
+        "## Robustness scorecard presets (normal vs stress)",
         "",
-        "| policy | normal_latency | stress_latency | normal_retries | stress_retries | stress_unfinished | stress_mem_stale_rate | stress_poison_exposure | robustness_score |",
-        "|---|---:|---:|---:|---:|---:|---:|---:|---:|",
+        "| preset | policy | normal_latency | stress_latency | normal_retries | stress_retries | stress_unfinished | stress_mem_stale_rate | stress_poison_exposure | robustness_score |",
+        "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|",
     ])
-    for policy in policies:
-        normal = _policy_group_mean(mean_by_key, NORMAL_SCENARIOS, policy)
-        stress = _policy_group_mean(mean_by_key, STRESS_SCENARIOS, policy)
-        r = _robustness_row(normal, stress)
-        lines.append(
-            f"| {policy} | {normal['lat']:.4f} | {stress['lat']:.4f} | {normal['protocol_retry']:.2f} | {stress['protocol_retry']:.2f} | {stress['unfinished_tasks']:.2f} | {stress['mem_stale_rate']:.4f} | {stress['mem_poison_exposure']:.4f} | {r['robustness']:.2f} |"
-        )
+    for preset in ["latency_first", "reliability_first"]:
+        for policy in policies:
+            normal = _policy_group_mean(mean_by_key, NORMAL_SCENARIOS, policy)
+            stress = _policy_group_mean(mean_by_key, STRESS_SCENARIOS, policy)
+            r = _robustness_row(normal, stress, preset=preset)
+            lines.append(
+                f"| {preset} | {policy} | {normal['lat']:.4f} | {stress['lat']:.4f} | {normal['protocol_retry']:.2f} | {stress['protocol_retry']:.2f} | {stress['unfinished_tasks']:.2f} | {stress['mem_stale_rate']:.4f} | {stress['mem_poison_exposure']:.4f} | {r['robustness']:.2f} |"
+            )
 
     lines.extend([
         "",
