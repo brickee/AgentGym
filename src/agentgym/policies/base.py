@@ -53,7 +53,12 @@ class BasePolicy:
     def plan_messages(self, num_tasks: int, num_agents: int = 5) -> List[MessagePlan]:
         return []
 
-    def plan_memory_cycle(self, num_tasks: int, num_agents: int = 5) -> Dict[str, List]:
+    def plan_memory_cycle(
+        self,
+        num_tasks: int,
+        num_agents: int = 5,
+        min_confidence: float | None = None,
+    ) -> Dict[str, List]:
         return {"writes": [], "reads": [], "invalidations": []}
 
     def world_overrides(self) -> Dict:

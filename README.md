@@ -36,13 +36,13 @@ make ci                             # smoke + unit checks (pytest optional)
 ```
 
 ## Benchmark notes
-- Scenarios: `baseline`, `semantic_overlap`, `memory_cycle`
+- Scenarios: `baseline`, `semantic_overlap`, `memory_cycle`, plus confidence sweeps `memory_cycle@thr_0.50|0.70|0.90`
 - Semantic duplicate-work is measured as distinct request IDs for the same `(task_id, tool_id)` intent.
 - Memory-cycle now couples memory to runtime outcomes using hit/miss tool branching (`on_hit`/`on_miss`) with TTL + confidence semantics.
 - Communication metrics are event-level runtime counters:
   - `communication_event_count`
   - `communication_cost`
-- Summary report now includes policy deltas (vs independent) and scenario deltas (vs baseline).
+- Summary report now includes policy deltas (vs independent), scenario deltas (vs baseline), and a memory confidence-threshold tradeoff table.
 
 ## Status
 M1/M2 simulator + baseline evaluation active with scenario-aware duplicate-work and communication-cost metrics.

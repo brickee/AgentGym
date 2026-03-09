@@ -16,6 +16,8 @@ POLICIES = {
     "shared_memory": SharedMemoryPolicy,
 }
 
+MEMORY_CONFIDENCE_SWEEP = [0.5, 0.7, 0.9]
+
 BENCHMARK_SCHEMA_VERSION = "1.0"
 BENCHMARK_COLUMNS = [
     "schema_version",
@@ -51,11 +53,25 @@ class RunConfig:
     num_tasks: int = 12
 
 
+def _memory_threshold_for_scenario(scenario: str) -> float | None:
+    prefix = "memory_cycle@thr_"
+    if scenario.startswith(prefix):
+        return float(scenario[len(prefix):])
+    if scenario == "memory_cycle":
+        return None
+    return None
+
+
 def _schedule_memory_workload(sim: Simulator, scenario: str, policy, cfg: RunConfig):
-    if scenario != "memory_cycle":
+    threshold = _memory_threshold_for_scenario(scenario)
+    if scenario != "memory_cycle" and threshold is None:
         return set()
 
-    workload = policy.plan_memory_cycle(num_tasks=cfg.num_tasks, num_agents=len(sim.world.agents))
+    workload = policy.plan_memory_cycle(
+        num_tasks=cfg.num_tasks,
+        num_agents=len(sim.world.agents),
+        min_confidence=threshold,
+    )
     coupled_tasks = set()
 
     for w in workload.get("writes", []):
@@ -152,7 +168,10 @@ def run_once(cfg: RunConfig) -> Dict:
 
 def run_benchmark(out_csv: str = "artifacts/benchmark_v0.csv"):
     rows: List[dict] = []
-    for scenario in ["baseline", "semantic_overlap", "memory_cycle"]:
+    scenarios = ["baseline", "semantic_overlap", "memory_cycle"] + [
+        f"memory_cycle@thr_{thr:.2f}" for thr in MEMORY_CONFIDENCE_SWEEP
+    ]
+    for scenario in scenarios:
         for policy in ["independent", "planner_worker", "shared_memory"]:
             for seed in [1, 2, 3]:
                 rows.append(run_once(RunConfig(policy_name=policy, seed=seed, scenario=scenario)))

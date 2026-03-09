@@ -201,3 +201,20 @@
 - `PYTHONPATH=src python3 scripts/smoke_check.py` -> `SMOKE_CHECK_OK`
 - `PYTHONPATH=src python3 scripts/run_benchmark.py` -> `BENCHMARK_OK`
 - `python3 scripts/summarize_benchmark.py` -> `SUMMARY_OK`
+
+## 2026-03-08 (Autopilot sprint — memory confidence-threshold sweeps)
+- Added deterministic memory threshold sweeps in benchmark runner:
+  - `memory_cycle@thr_0.50`
+  - `memory_cycle@thr_0.70`
+  - `memory_cycle@thr_0.90`
+- Extended policy memory-plan APIs to accept optional `min_confidence` override for controlled sweeps.
+- Preserved reproducibility by deriving threshold from scenario string only (no RNG/stateful behavior).
+- Expanded summary output to include:
+  - memory low-confidence counter in aggregate table (`hit/miss/stale/low_conf`)
+  - dedicated memory threshold tradeoff table (latency/retries/hit-miss-low_conf)
+- Updated README benchmark notes and advanced NEXT_TODO priorities.
+
+### Validation
+- `PYTHONPATH=src python3 scripts/smoke_check.py` -> `SMOKE_CHECK_OK`
+- `PYTHONPATH=src python3 scripts/run_benchmark.py` -> `BENCHMARK_OK`
+- `python3 scripts/summarize_benchmark.py` -> `SUMMARY_OK`

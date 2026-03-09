@@ -45,7 +45,15 @@ def _means(v):
         "mem_hit": v["mem_hit"] / n,
         "mem_miss": v["mem_miss"] / n,
         "mem_stale": v["mem_stale"] / n,
+        "mem_low_conf": v["mem_low_conf"] / n,
     }
+
+
+def _memory_threshold(scenario: str) -> float | None:
+    prefix = "memory_cycle@thr_"
+    if scenario.startswith(prefix):
+        return float(scenario[len(prefix):])
+    return None
 
 
 def main():
@@ -63,6 +71,7 @@ def main():
         "mem_hit": 0.0,
         "mem_miss": 0.0,
         "mem_stale": 0.0,
+        "mem_low_conf": 0.0,
     })
 
     schema_versions = set()
@@ -88,6 +97,7 @@ def main():
             agg[k]["mem_hit"] += float(row.get("memory_hit_count", 0.0))
             agg[k]["mem_miss"] += float(row.get("memory_miss_count", 0.0))
             agg[k]["mem_stale"] += float(row.get("memory_stale_read_count", 0.0))
+            agg[k]["mem_low_conf"] += float(row.get("memory_low_confidence_read_count", 0.0))
 
     mean_by_key = {k: _means(v) for k, v in agg.items()}
     scenarios = sorted({k[0] for k in agg})
@@ -98,14 +108,14 @@ def main():
         "",
         f"Schema versions: {', '.join(sorted(v for v in schema_versions if v))}",
         "",
-        "| scenario | policy | avg_events | avg_completion_time | avg_protocol_retries | avg_semantic_duplicates | avg_comm_events | avg_comm_cost | avg_mem_w/r/i | avg_mem_hit/miss/stale |",
+        "| scenario | policy | avg_events | avg_completion_time | avg_protocol_retries | avg_semantic_duplicates | avg_comm_events | avg_comm_cost | avg_mem_w/r/i | avg_mem_hit/miss/stale/low_conf |",
         "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
     for scenario in scenarios:
         for policy in policies:
             m = mean_by_key[(scenario, policy)]
             lines.append(
-                f"| {scenario} | {policy} | {m['events']:.2f} | {m['lat']:.4f} | {m['protocol_retry']:.2f} | {m['semantic_dup']:.2f} | {m['comm_events']:.2f} | {m['comm_cost']:.2f} | {m['mem_w']:.2f}/{m['mem_r']:.2f}/{m['mem_i']:.2f} | {m['mem_hit']:.2f}/{m['mem_miss']:.2f}/{m['mem_stale']:.2f} |"
+                f"| {scenario} | {policy} | {m['events']:.2f} | {m['lat']:.4f} | {m['protocol_retry']:.2f} | {m['semantic_dup']:.2f} | {m['comm_events']:.2f} | {m['comm_cost']:.2f} | {m['mem_w']:.2f}/{m['mem_r']:.2f}/{m['mem_i']:.2f} | {m['mem_hit']:.2f}/{m['mem_miss']:.2f}/{m['mem_stale']:.2f}/{m['mem_low_conf']:.2f} |"
             )
 
     lines.extend([
@@ -137,6 +147,25 @@ def main():
             m = mean_by_key[(scenario, policy)]
             lines.append(
                 f"| {policy} | {scenario} | {m['lat'] - base['lat']:+.4f} | {m['protocol_retry'] - base['protocol_retry']:+.2f} | {m['semantic_dup'] - base['semantic_dup']:+.2f} |"
+            )
+
+    lines.extend([
+        "",
+        "## Memory confidence-threshold tradeoff (memory_cycle sweeps)",
+        "",
+        "| policy | threshold | avg_completion_time | avg_protocol_retries | avg_mem_hit | avg_mem_miss | avg_mem_low_conf |",
+        "|---|---:|---:|---:|---:|---:|---:|",
+    ])
+    for policy in policies:
+        threshold_scenarios = sorted(
+            [s for s in scenarios if _memory_threshold(s) is not None],
+            key=lambda s: _memory_threshold(s),
+        )
+        for scenario in threshold_scenarios:
+            thr = _memory_threshold(scenario)
+            m = mean_by_key[(scenario, policy)]
+            lines.append(
+                f"| {policy} | {thr:.2f} | {m['lat']:.4f} | {m['protocol_retry']:.2f} | {m['mem_hit']:.2f} | {m['mem_miss']:.2f} | {m['mem_low_conf']:.2f} |"
             )
 
     OUT_MD.write_text("\n".join(lines), encoding="utf-8")

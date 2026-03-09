@@ -61,7 +61,7 @@ class PlannerWorkerPolicy(BasePolicy):
             )
         return msgs
 
-    def plan_memory_cycle(self, num_tasks: int, num_agents: int = 5):
+    def plan_memory_cycle(self, num_tasks: int, num_agents: int = 5, min_confidence: float | None = None):
         writes = []
         reads = []
         invalidations = []
@@ -81,7 +81,7 @@ class PlannerWorkerPolicy(BasePolicy):
                 "memory_id": mem_id,
                 "task_id": task_id,
                 "at": 0.06 + i * 0.03,
-                "min_confidence": 0.65,
+                "min_confidence": min_confidence if min_confidence is not None else 0.65,
                 "on_hit": {"tool_id": "database" if i % 2 == 0 else "search", "tool_request_id": f"mem_hit_pw_{i}"},
                 "on_miss": {"tool_id": "compute", "tool_request_id": f"mem_miss_pw_{i}"},
             })
