@@ -1,11 +1,11 @@
 # NEXT TODO
 
 ## Immediate (next session)
-1. Plan migration timeline + warnings for legacy aliases (`retry_count`, `duplicate_tool_calls`).
-2. Add replay analytics pass (event-type distribution + invariant-failure precheck report) into summary artifacts.
-3. Add benchmark-level communication effectiveness metric (task latency gain per communication cost unit).
+1. Wire replay analytics outputs into benchmark summary tables (not just helper functions) with per-scenario decomposition excerpts.
+2. Add deterministic `resource_contention` scenario coverage and include it in scenario delta tables.
+3. Add invariant regression tests for replay precheck + validator edge cases (`non-monotonic sim_time`, terminal-after-terminal, uncreated-task tool request).
 
 ## Quality tasks
-- Plan migration timeline for legacy aliases (`retry_count`, `duplicate_tool_calls`).
-- Add replay analytics snapshot extraction from benchmark runs for quick debugging.
-- Add communication effectiveness metric + policy comparison view.
+- Add migration note and deprecation warnings timeline for legacy aliases (`retry_count`, `duplicate_tool_calls`).
+- Expand communication effectiveness reporting with policy ranking and confidence over seeds.
+- Enable pytest in runtime image so CI checks can run full suite locally.

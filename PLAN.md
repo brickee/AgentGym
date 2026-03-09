@@ -31,6 +31,10 @@ Build a discrete-event multi-agent **organization simulator** for shared tools/r
 - [ ] RL/GEPA/MARTI interfaces
 - [ ] Benchmark packaging
 
+## Current Phase Focus (2026-03-09)
+- M2 hardening pass in progress: replay analytics decomposition, communication metric normalization, and stricter invariant checks.
+- Benchmark schema moved to v1.1 to include normalized communication columns.
+
 ## Weekly Operating Rules
 1. Each day must end with PROGRESS + NEXT_TODO updates.
 2. No feature merge without metric impact or test coverage.

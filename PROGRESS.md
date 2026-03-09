@@ -233,3 +233,27 @@
 - `PYTHONPATH=src python3 scripts/smoke_check.py` -> `SMOKE_CHECK_OK`
 - `PYTHONPATH=src python3 scripts/run_benchmark.py` -> `BENCHMARK_OK`
 - `python3 scripts/summarize_benchmark.py` -> `SUMMARY_OK`
+
+## 2026-03-09 (Autopilot sprint — replay analytics + normalized comm metrics + invariant hardening)
+- Added replay analytics helpers in `core/replay.py`:
+  - event-type distribution snapshot
+  - duplicate-work decomposition by agent/task with intent map
+  - lightweight replay invariant precheck
+- Hardened `TransitionValidator` with stricter invariants:
+  - duplicate `task_created` rejection
+  - `tool_requested` must reference created task
+  - pending tool-request tracking exposed for debug checks
+- Added communication normalization utilities in `eval/metrics.py`:
+  - per-task / per-success communication cost
+  - per-task communication/retry/duplicate rates
+  - aggregate communication effectiveness score
+- Extended benchmark schema in runner to `1.1` and added normalized communication columns.
+- Regenerated benchmark + summary artifacts after schema update.
+
+### Validation
+- `PYTHONPATH=src python3 scripts/smoke_check.py` -> `SMOKE_CHECK_OK`
+- `PYTHONPATH=src python3 scripts/run_benchmark.py` -> `BENCHMARK_OK` (`artifacts/benchmark_v0.csv`)
+- `python3 scripts/summarize_benchmark.py` -> `SUMMARY_OK` (`artifacts/benchmark_v0_summary.md`)
+
+### Blockers
+- `pytest` still not available in this runtime, so deeper unit-suite expansion remains constrained to smoke/benchmark gates.

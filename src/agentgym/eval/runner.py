@@ -5,6 +5,7 @@ from typing import List, Dict
 
 from agentgym.core.simulator import Simulator
 from agentgym.envs.mvp_world import make_mvp_world
+from agentgym.eval.metrics import compute_normalized_metrics
 from agentgym.policies.independent import IndependentPolicy
 from agentgym.policies.planner_worker import PlannerWorkerPolicy
 from agentgym.policies.shared_memory import SharedMemoryPolicy
@@ -18,7 +19,7 @@ POLICIES = {
 
 MEMORY_CONFIDENCE_SWEEP = [0.5, 0.7, 0.9]
 
-BENCHMARK_SCHEMA_VERSION = "1.0"
+BENCHMARK_SCHEMA_VERSION = "1.1"
 BENCHMARK_COLUMNS = [
     "schema_version",
     "scenario",
@@ -32,6 +33,12 @@ BENCHMARK_COLUMNS = [
     "semantic_duplicate_work_count",
     "communication_event_count",
     "communication_cost",
+    "comm_cost_per_task",
+    "comm_cost_per_success",
+    "comm_events_per_task",
+    "retries_per_task",
+    "duplicates_per_task",
+    "comm_effectiveness",
     "retry_count",
     "duplicate_tool_calls",
     "memory_write_count",
