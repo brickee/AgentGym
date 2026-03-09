@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import List, Dict
 
 from agentgym.core.simulator import Simulator
+from agentgym.core.replay import replay_duplicate_decomposition, replay_invariant_precheck
 from agentgym.envs.mvp_world import make_mvp_world
 from agentgym.eval.metrics import compute_normalized_metrics
 from agentgym.policies.independent import IndependentPolicy
@@ -19,7 +20,7 @@ POLICIES = {
 
 MEMORY_CONFIDENCE_SWEEP = [0.5, 0.7, 0.9]
 
-BENCHMARK_SCHEMA_VERSION = "1.1"
+BENCHMARK_SCHEMA_VERSION = "1.2"
 BENCHMARK_COLUMNS = [
     "schema_version",
     "scenario",
@@ -39,6 +40,9 @@ BENCHMARK_COLUMNS = [
     "retries_per_task",
     "duplicates_per_task",
     "comm_effectiveness",
+    "replay_violation_count",
+    "replay_duplicate_task_count",
+    "replay_top_duplicate_agent_count",
     "retry_count",
     "duplicate_tool_calls",
     "memory_write_count",
@@ -135,18 +139,30 @@ def _schedule_message_workload(sim: Simulator, policy, cfg: RunConfig, num_agent
         sim.schedule(sent_at, 0, "send_message", msg.sender_id, "bench_msg", payload)
 
 
+def _apply_scenario_world_overrides(world, scenario: str):
+    if scenario == "resource_contention":
+        world.resources = {
+            "api_search": 1,
+            "compute_slot": 1,
+            "db_lock": 1,
+        }
+        world.retry_base_delay = 0.5
+        world.retry_mode = "exp"
+
+
 def run_once(cfg: RunConfig) -> Dict:
     world = make_mvp_world(seed=cfg.seed)
 
     policy = POLICIES[cfg.policy_name]()
     for k, v in policy.world_overrides().items():
         setattr(world, k, v)
+    _apply_scenario_world_overrides(world, cfg.scenario)
 
     plans = policy.plan_requests(num_tasks=cfg.num_tasks, num_agents=len(world.agents))
     if cfg.scenario == "semantic_overlap":
         plans.extend(policy.plan_semantic_duplicates(num_tasks=cfg.num_tasks, num_agents=len(world.agents)))
 
-    sim = Simulator(world, enable_replay=False)
+    sim = Simulator(world, enable_replay=True)
     coupled_tasks = _schedule_memory_workload(sim, cfg.scenario, policy, cfg)
     _schedule_message_workload(sim, policy, cfg, len(world.agents))
 
@@ -165,6 +181,12 @@ def run_once(cfg: RunConfig) -> Dict:
         })
 
     processed = sim.run(max_events=5000)
+    events = sim.recorder.events if sim.recorder else []
+    replay_violations = replay_invariant_precheck(events)
+    replay_dups = replay_duplicate_decomposition(events)
+    top_dup_agent = max(replay_dups["by_agent"].values()) if replay_dups["by_agent"] else 0
+    norm = compute_normalized_metrics(world.metrics, cfg.num_tasks)
+
     return {
         "schema_version": BENCHMARK_SCHEMA_VERSION,
         "scenario": cfg.scenario,
@@ -178,6 +200,15 @@ def run_once(cfg: RunConfig) -> Dict:
         "semantic_duplicate_work_count": int(world.metrics["semantic_duplicate_work_count"]),
         "communication_event_count": int(world.metrics["communication_event_count"]),
         "communication_cost": round(world.metrics["communication_cost"], 3),
+        "comm_cost_per_task": norm["comm_cost_per_task"],
+        "comm_cost_per_success": norm["comm_cost_per_success"],
+        "comm_events_per_task": norm["comm_events_per_task"],
+        "retries_per_task": norm["retries_per_task"],
+        "duplicates_per_task": norm["duplicates_per_task"],
+        "comm_effectiveness": norm["comm_effectiveness"],
+        "replay_violation_count": int(len(replay_violations)),
+        "replay_duplicate_task_count": int(sum(replay_dups["by_task"].values())),
+        "replay_top_duplicate_agent_count": int(top_dup_agent),
         "retry_count": int(world.metrics["retry_count"]),
         "duplicate_tool_calls": int(world.metrics["duplicate_tool_calls"]),
         "memory_write_count": int(world.metrics["memory_write_count"]),
@@ -199,6 +230,7 @@ def run_benchmark(out_csv: str = "artifacts/benchmark_v0.csv"):
         "memory_cycle",
         "comm_stress_p2p",
         "comm_stress_broadcast",
+        "resource_contention",
     ] + [f"memory_cycle@thr_{thr:.2f}" for thr in MEMORY_CONFIDENCE_SWEEP]
     for scenario in scenarios:
         for policy in ["independent", "planner_worker", "shared_memory"]:

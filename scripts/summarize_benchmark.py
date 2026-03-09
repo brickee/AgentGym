@@ -17,6 +17,15 @@ REQUIRED_COLUMNS = {
     "semantic_duplicate_work_count",
     "communication_event_count",
     "communication_cost",
+    "comm_cost_per_task",
+    "comm_cost_per_success",
+    "comm_events_per_task",
+    "retries_per_task",
+    "duplicates_per_task",
+    "comm_effectiveness",
+    "replay_violation_count",
+    "replay_duplicate_task_count",
+    "replay_top_duplicate_agent_count",
     "retry_count",
     "duplicate_tool_calls",
     "memory_write_count",
@@ -46,6 +55,15 @@ def _means(v):
         "mem_miss": v["mem_miss"] / n,
         "mem_stale": v["mem_stale"] / n,
         "mem_low_conf": v["mem_low_conf"] / n,
+        "comm_cost_per_task": v["comm_cost_per_task"] / n,
+        "comm_cost_per_success": v["comm_cost_per_success"] / n,
+        "comm_events_per_task": v["comm_events_per_task"] / n,
+        "retries_per_task": v["retries_per_task"] / n,
+        "duplicates_per_task": v["duplicates_per_task"] / n,
+        "comm_effectiveness": v["comm_effectiveness"] / n,
+        "replay_viol": v["replay_viol"] / n,
+        "replay_dup_task": v["replay_dup_task"] / n,
+        "replay_top_dup_agent": v["replay_top_dup_agent"] / n,
     }
 
 
@@ -72,6 +90,15 @@ def main():
         "mem_miss": 0.0,
         "mem_stale": 0.0,
         "mem_low_conf": 0.0,
+        "comm_cost_per_task": 0.0,
+        "comm_cost_per_success": 0.0,
+        "comm_events_per_task": 0.0,
+        "retries_per_task": 0.0,
+        "duplicates_per_task": 0.0,
+        "comm_effectiveness": 0.0,
+        "replay_viol": 0.0,
+        "replay_dup_task": 0.0,
+        "replay_top_dup_agent": 0.0,
     })
 
     schema_versions = set()
@@ -98,6 +125,15 @@ def main():
             agg[k]["mem_miss"] += float(row.get("memory_miss_count", 0.0))
             agg[k]["mem_stale"] += float(row.get("memory_stale_read_count", 0.0))
             agg[k]["mem_low_conf"] += float(row.get("memory_low_confidence_read_count", 0.0))
+            agg[k]["comm_cost_per_task"] += float(row.get("comm_cost_per_task", 0.0))
+            agg[k]["comm_cost_per_success"] += float(row.get("comm_cost_per_success", 0.0))
+            agg[k]["comm_events_per_task"] += float(row.get("comm_events_per_task", 0.0))
+            agg[k]["retries_per_task"] += float(row.get("retries_per_task", 0.0))
+            agg[k]["duplicates_per_task"] += float(row.get("duplicates_per_task", 0.0))
+            agg[k]["comm_effectiveness"] += float(row.get("comm_effectiveness", 0.0))
+            agg[k]["replay_viol"] += float(row.get("replay_violation_count", 0.0))
+            agg[k]["replay_dup_task"] += float(row.get("replay_duplicate_task_count", 0.0))
+            agg[k]["replay_top_dup_agent"] += float(row.get("replay_top_duplicate_agent_count", 0.0))
 
     mean_by_key = {k: _means(v) for k, v in agg.items()}
     scenarios = sorted({k[0] for k in agg})
@@ -166,6 +202,34 @@ def main():
             m = mean_by_key[(scenario, policy)]
             lines.append(
                 f"| {policy} | {thr:.2f} | {m['lat']:.4f} | {m['protocol_retry']:.2f} | {m['mem_hit']:.2f} | {m['mem_miss']:.2f} | {m['mem_low_conf']:.2f} |"
+            )
+
+    lines.extend([
+        "",
+        "## Normalized communication metrics",
+        "",
+        "| scenario | policy | comm_cost/task | comm_cost/success | comm_events/task | retries/task | duplicates/task | comm_effectiveness |",
+        "|---|---|---:|---:|---:|---:|---:|---:|",
+    ])
+    for scenario in scenarios:
+        for policy in policies:
+            m = mean_by_key[(scenario, policy)]
+            lines.append(
+                f"| {scenario} | {policy} | {m['comm_cost_per_task']:.4f} | {m['comm_cost_per_success']:.4f} | {m['comm_events_per_task']:.4f} | {m['retries_per_task']:.4f} | {m['duplicates_per_task']:.4f} | {m['comm_effectiveness']:.4f} |"
+            )
+
+    lines.extend([
+        "",
+        "## Replay invariant + duplicate decomposition",
+        "",
+        "| scenario | policy | replay_violations | replay_duplicate_tasks | replay_top_duplicate_agent |",
+        "|---|---|---:|---:|---:|",
+    ])
+    for scenario in scenarios:
+        for policy in policies:
+            m = mean_by_key[(scenario, policy)]
+            lines.append(
+                f"| {scenario} | {policy} | {m['replay_viol']:.2f} | {m['replay_dup_task']:.2f} | {m['replay_top_dup_agent']:.2f} |"
             )
 
     OUT_MD.write_text("\n".join(lines), encoding="utf-8")

@@ -31,3 +31,11 @@ def test_send_message_updates_event_level_comm_metrics():
 
     assert world.metrics["communication_event_count"] == 2.0
     assert world.metrics["communication_cost"] > 2.0
+
+
+def test_resource_contention_scenario_increases_retries_for_independent_policy():
+    baseline = run_once(RunConfig(policy_name="independent", seed=1, scenario="baseline"))
+    contention = run_once(RunConfig(policy_name="independent", seed=1, scenario="resource_contention"))
+
+    assert contention["protocol_retry_count"] >= baseline["protocol_retry_count"]
+    assert contention["retries_per_task"] >= baseline["retries_per_task"]

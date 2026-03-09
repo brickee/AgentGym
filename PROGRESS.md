@@ -257,3 +257,34 @@
 
 ### Blockers
 - `pytest` still not available in this runtime, so deeper unit-suite expansion remains constrained to smoke/benchmark gates.
+
+## 2026-03-09 (Autopilot sprint — replay-aware benchmark artifacts + contention scenario + validator deterministic tests)
+- Wired replay analytics into benchmark artifacts (`schema_version` -> `1.2`):
+  - `replay_violation_count`
+  - `replay_duplicate_task_count`
+  - `replay_top_duplicate_agent_count`
+- Activated normalized communication metrics in benchmark rows (previously schema-declared but unpopulated):
+  - `comm_cost_per_task`, `comm_cost_per_success`, `comm_events_per_task`
+  - `retries_per_task`, `duplicates_per_task`, `comm_effectiveness`
+- Added deterministic `resource_contention` scenario with tighter shared-resource limits and exponential retry backoff.
+- Extended benchmark summary report with two new sections:
+  - normalized communication metrics table
+  - replay invariant/decomposition table
+- Added deterministic invariant tests for validator/replay edge-cases:
+  - pending-request bookkeeping clears on terminal tool events
+  - duplicate `task_created` and uncreated-task `tool_requested` guards
+  - replay precheck catches non-monotonic `sim_time` and terminal-after-terminal lifecycle events
+- Added scenario regression test asserting `resource_contention` increases retry pressure vs baseline for independent policy.
+
+### Validation
+- `PYTHONPATH=src python3 scripts/smoke_check.py` -> `SMOKE_CHECK_OK`
+- `PYTHONPATH=src python3 scripts/run_benchmark.py` -> `BENCHMARK_OK`
+- `python3 scripts/summarize_benchmark.py` -> `SUMMARY_OK`
+
+### Metric snapshot / deltas
+- Baseline metrics remained stable for existing scenarios (example: `baseline/independent` delta: latency `+0.0000`, retries `+0.00`, semantic duplicates `+0.00`).
+- New scenario `resource_contention/independent` introduced expected stress behavior:
+  - avg completion time `17.0317`
+  - avg protocol retries `36.00`
+  - replay violations `0.00`
+- Total replay violations across full benchmark matrix: `0`.
