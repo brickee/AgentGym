@@ -33,7 +33,8 @@ Build a discrete-event multi-agent **organization simulator** for shared tools/r
 
 ## Current Phase Focus (2026-03-09)
 - M2 hardening pass in progress: replay analytics decomposition, communication metric normalization, and stricter invariant checks.
-- Benchmark schema moved to v1.1 to include normalized communication columns.
+- Benchmark schema advanced to v1.3 with memory robustness metrics (`memory_poisoned_*`, stale/poison rates).
+- New stress scenarios emphasize memory poisoning and staleness failure modes, with summary-level recommendation heuristics.
 
 ## Weekly Operating Rules
 1. Each day must end with PROGRESS + NEXT_TODO updates.

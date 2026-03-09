@@ -34,4 +34,6 @@ class WorldState:
         "memory_miss_count": 0.0,
         "memory_stale_read_count": 0.0,
         "memory_low_confidence_read_count": 0.0,
+        "memory_poisoned_write_count": 0.0,
+        "memory_poisoned_read_count": 0.0,
     })

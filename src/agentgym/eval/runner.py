@@ -20,7 +20,7 @@ POLICIES = {
 
 MEMORY_CONFIDENCE_SWEEP = [0.5, 0.7, 0.9]
 
-BENCHMARK_SCHEMA_VERSION = "1.2"
+BENCHMARK_SCHEMA_VERSION = "1.3"
 BENCHMARK_COLUMNS = [
     "schema_version",
     "scenario",
@@ -52,6 +52,10 @@ BENCHMARK_COLUMNS = [
     "memory_miss_count",
     "memory_stale_read_count",
     "memory_low_confidence_read_count",
+    "memory_poisoned_write_count",
+    "memory_poisoned_read_count",
+    "memory_stale_miss_rate",
+    "memory_poison_exposure_rate",
     "sim_end_time",
 ]
 
@@ -73,16 +77,65 @@ def _memory_threshold_for_scenario(scenario: str) -> float | None:
     return None
 
 
-def _schedule_memory_workload(sim: Simulator, scenario: str, policy, cfg: RunConfig):
+def _scenario_memory_workload(policy, scenario: str, cfg: RunConfig, num_agents: int) -> dict:
     threshold = _memory_threshold_for_scenario(scenario)
-    if scenario != "memory_cycle" and threshold is None:
-        return set()
-
-    workload = policy.plan_memory_cycle(
+    base = policy.plan_memory_cycle(
         num_tasks=cfg.num_tasks,
-        num_agents=len(sim.world.agents),
+        num_agents=num_agents,
         min_confidence=threshold,
     )
+
+    if scenario in {"memory_cycle", "memory_poisoning", "memory_staleness_heavy"} or threshold is not None:
+        pass
+    else:
+        return {"writes": [], "reads": [], "invalidations": []}
+
+    if scenario == "memory_poisoning":
+        poisoned_writes = []
+        poisoned_reads = []
+        for i, w in enumerate(base.get("writes", [])):
+            w2 = dict(w)
+            if i % 2 == 0:
+                w2["poisoned"] = True
+                w2["confidence"] = 0.98
+                w2["ttl"] = max(3.0, float(w2.get("ttl", 1.0)))
+                w2["value"] = {"preferred_tool": "compute", "tag": "poisoned"}
+            poisoned_writes.append(w2)
+
+        for i, r in enumerate(base.get("reads", [])):
+            r2 = dict(r)
+            if i % 2 == 0:
+                # If poisoned memory is believed, choose expensive wrong path.
+                r2["on_hit"] = {"tool_id": "compute", "tool_request_id": f"poison_hit_{cfg.policy_name}_{i}"}
+                r2["on_miss"] = {"tool_id": "search", "tool_request_id": f"poison_miss_{cfg.policy_name}_{i}"}
+                r2["min_confidence"] = 0.9
+            poisoned_reads.append(r2)
+
+        base["writes"] = poisoned_writes
+        base["reads"] = poisoned_reads
+
+    if scenario == "memory_staleness_heavy":
+        stale_writes = []
+        stale_reads = []
+        for i, w in enumerate(base.get("writes", [])):
+            w2 = dict(w)
+            w2["ttl"] = 0.01 + (i * 0.002)
+            stale_writes.append(w2)
+
+        for i, r in enumerate(base.get("reads", [])):
+            r2 = dict(r)
+            r2["at"] = max(float(r2.get("at", 0.1)), 0.2 + i * 0.03)
+            r2["on_miss"] = {"tool_id": "compute", "tool_request_id": f"stale_miss_{cfg.policy_name}_{i}"}
+            stale_reads.append(r2)
+
+        base["writes"] = stale_writes
+        base["reads"] = stale_reads
+
+    return base
+
+
+def _schedule_memory_workload(sim: Simulator, scenario: str, policy, cfg: RunConfig):
+    workload = _scenario_memory_workload(policy, scenario, cfg, len(sim.world.agents))
     coupled_tasks = set()
 
     for w in workload.get("writes", []):
@@ -91,6 +144,7 @@ def _schedule_memory_workload(sim: Simulator, scenario: str, policy, cfg: RunCon
             "value": w.get("value", {}),
             "ttl": w.get("ttl"),
             "confidence": w.get("confidence", 1.0),
+            "poisoned": w.get("poisoned", False),
         })
 
     for r in workload.get("reads", []):
@@ -187,6 +241,9 @@ def run_once(cfg: RunConfig) -> Dict:
     top_dup_agent = max(replay_dups["by_agent"].values()) if replay_dups["by_agent"] else 0
     norm = compute_normalized_metrics(world.metrics, cfg.num_tasks)
 
+    memory_reads = max(1, int(world.metrics["memory_read_count"]))
+    memory_hits = max(1, int(world.metrics["memory_hit_count"]))
+
     return {
         "schema_version": BENCHMARK_SCHEMA_VERSION,
         "scenario": cfg.scenario,
@@ -218,6 +275,10 @@ def run_once(cfg: RunConfig) -> Dict:
         "memory_miss_count": int(world.metrics["memory_miss_count"]),
         "memory_stale_read_count": int(world.metrics["memory_stale_read_count"]),
         "memory_low_confidence_read_count": int(world.metrics["memory_low_confidence_read_count"]),
+        "memory_poisoned_write_count": int(world.metrics["memory_poisoned_write_count"]),
+        "memory_poisoned_read_count": int(world.metrics["memory_poisoned_read_count"]),
+        "memory_stale_miss_rate": round(float(world.metrics["memory_stale_read_count"]) / memory_reads, 4),
+        "memory_poison_exposure_rate": round(float(world.metrics["memory_poisoned_read_count"]) / memory_hits, 4),
         "sim_end_time": round(world.current_time, 4),
     }
 
@@ -228,6 +289,8 @@ def run_benchmark(out_csv: str = "artifacts/benchmark_v0.csv"):
         "baseline",
         "semantic_overlap",
         "memory_cycle",
+        "memory_poisoning",
+        "memory_staleness_heavy",
         "comm_stress_p2p",
         "comm_stress_broadcast",
         "resource_contention",

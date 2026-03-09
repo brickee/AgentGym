@@ -288,3 +288,33 @@
   - avg protocol retries `36.00`
   - replay violations `0.00`
 - Total replay violations across full benchmark matrix: `0`.
+
+## 2026-03-09 (Autopilot sprint — local pytest path + memory poisoning/staleness robustness + recommendations)
+- Added local pytest install fallback path in `scripts/ci_check.sh`:
+  - attempts import from `src:.local-pydeps`
+  - auto-installs pytest into `.local-pydeps` when missing
+  - preserves no-deps behavior by smoke-only fallback when install/import fails
+- Extended world/simulator memory metrics with poisoning counters:
+  - `memory_poisoned_write_count`
+  - `memory_poisoned_read_count`
+- Added stronger memory robustness scenarios in benchmark runner:
+  - `memory_poisoning`
+  - `memory_staleness_heavy`
+- Advanced benchmark schema to `1.3` and emitted robustness rates:
+  - `memory_stale_miss_rate`
+  - `memory_poison_exposure_rate`
+- Expanded summary report with:
+  - concise recommendation section (best policy by scenario)
+  - tradeoff flags (`high_comm_cost`, `high_retry_pressure`, `stale_memory_risk`, `poisoning_risk`)
+  - dedicated memory robustness table
+- Updated tests to cover poisoning/staleness metric plumbing and scenario emissions.
+
+### Validation
+- `PYTHONPATH=src python3 scripts/smoke_check.py` -> `SMOKE_CHECK_OK`
+- `PYTHONPATH=src python3 scripts/run_benchmark.py` -> `BENCHMARK_OK`
+- `python3 scripts/summarize_benchmark.py` -> `SUMMARY_OK`
+- `PYTHONPATH=src python3 -m pytest -q` -> still unavailable globally (`No module named pytest`)
+- `./scripts/ci_check.sh` -> passed with local pytest path fallback (`15 passed`)
+
+### Blockers
+- Global environment still lacks system pytest; local fallback works, but direct `python3 -m pytest -q` remains unavailable unless local path is provided.

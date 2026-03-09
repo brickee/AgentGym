@@ -35,6 +35,10 @@ REQUIRED_COLUMNS = {
     "memory_miss_count",
     "memory_stale_read_count",
     "memory_low_confidence_read_count",
+    "memory_poisoned_write_count",
+    "memory_poisoned_read_count",
+    "memory_stale_miss_rate",
+    "memory_poison_exposure_rate",
     "sim_end_time",
 }
 
@@ -55,6 +59,10 @@ def _means(v):
         "mem_miss": v["mem_miss"] / n,
         "mem_stale": v["mem_stale"] / n,
         "mem_low_conf": v["mem_low_conf"] / n,
+        "mem_poison_w": v["mem_poison_w"] / n,
+        "mem_poison_r": v["mem_poison_r"] / n,
+        "mem_stale_rate": v["mem_stale_rate"] / n,
+        "mem_poison_exposure": v["mem_poison_exposure"] / n,
         "comm_cost_per_task": v["comm_cost_per_task"] / n,
         "comm_cost_per_success": v["comm_cost_per_success"] / n,
         "comm_events_per_task": v["comm_events_per_task"] / n,
@@ -74,6 +82,38 @@ def _memory_threshold(scenario: str) -> float | None:
     return None
 
 
+def _recommend_policy(mean_by_key, scenario: str, policies: list[str]):
+    candidates = []
+    for p in policies:
+        m = mean_by_key[(scenario, p)]
+        risk_penalty = 0.0
+        if m["mem_stale_rate"] > 0.3:
+            risk_penalty += 3.0
+        if m["mem_poison_exposure"] > 0.2:
+            risk_penalty += 3.0
+        score = (
+            m["lat"]
+            + 0.08 * m["protocol_retry"]
+            + 0.12 * m["semantic_dup"]
+            + 0.03 * m["comm_cost"]
+            + risk_penalty
+        )
+        flags = []
+        if m["comm_cost_per_task"] > 5.0:
+            flags.append("high_comm_cost")
+        if m["retries_per_task"] > 2.0:
+            flags.append("high_retry_pressure")
+        if m["mem_stale_rate"] > 0.3:
+            flags.append("stale_memory_risk")
+        if m["mem_poison_exposure"] > 0.2:
+            flags.append("poisoning_risk")
+        candidates.append((score, p, flags))
+
+    candidates.sort(key=lambda x: x[0])
+    _, best_policy, flags = candidates[0]
+    return best_policy, (", ".join(flags) if flags else "none")
+
+
 def main():
     agg = defaultdict(lambda: {
         "n": 0,
@@ -90,6 +130,10 @@ def main():
         "mem_miss": 0.0,
         "mem_stale": 0.0,
         "mem_low_conf": 0.0,
+        "mem_poison_w": 0.0,
+        "mem_poison_r": 0.0,
+        "mem_stale_rate": 0.0,
+        "mem_poison_exposure": 0.0,
         "comm_cost_per_task": 0.0,
         "comm_cost_per_success": 0.0,
         "comm_events_per_task": 0.0,
@@ -125,6 +169,10 @@ def main():
             agg[k]["mem_miss"] += float(row.get("memory_miss_count", 0.0))
             agg[k]["mem_stale"] += float(row.get("memory_stale_read_count", 0.0))
             agg[k]["mem_low_conf"] += float(row.get("memory_low_confidence_read_count", 0.0))
+            agg[k]["mem_poison_w"] += float(row.get("memory_poisoned_write_count", 0.0))
+            agg[k]["mem_poison_r"] += float(row.get("memory_poisoned_read_count", 0.0))
+            agg[k]["mem_stale_rate"] += float(row.get("memory_stale_miss_rate", 0.0))
+            agg[k]["mem_poison_exposure"] += float(row.get("memory_poison_exposure_rate", 0.0))
             agg[k]["comm_cost_per_task"] += float(row.get("comm_cost_per_task", 0.0))
             agg[k]["comm_cost_per_success"] += float(row.get("comm_cost_per_success", 0.0))
             agg[k]["comm_events_per_task"] += float(row.get("comm_events_per_task", 0.0))
@@ -144,15 +192,26 @@ def main():
         "",
         f"Schema versions: {', '.join(sorted(v for v in schema_versions if v))}",
         "",
-        "| scenario | policy | avg_events | avg_completion_time | avg_protocol_retries | avg_semantic_duplicates | avg_comm_events | avg_comm_cost | avg_mem_w/r/i | avg_mem_hit/miss/stale/low_conf |",
-        "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|",
+        "| scenario | policy | avg_events | avg_completion_time | avg_protocol_retries | avg_semantic_duplicates | avg_comm_events | avg_comm_cost | avg_mem_w/r/i | avg_mem_hit/miss/stale/low_conf | avg_mem_poison_w/r |",
+        "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
     for scenario in scenarios:
         for policy in policies:
             m = mean_by_key[(scenario, policy)]
             lines.append(
-                f"| {scenario} | {policy} | {m['events']:.2f} | {m['lat']:.4f} | {m['protocol_retry']:.2f} | {m['semantic_dup']:.2f} | {m['comm_events']:.2f} | {m['comm_cost']:.2f} | {m['mem_w']:.2f}/{m['mem_r']:.2f}/{m['mem_i']:.2f} | {m['mem_hit']:.2f}/{m['mem_miss']:.2f}/{m['mem_stale']:.2f}/{m['mem_low_conf']:.2f} |"
+                f"| {scenario} | {policy} | {m['events']:.2f} | {m['lat']:.4f} | {m['protocol_retry']:.2f} | {m['semantic_dup']:.2f} | {m['comm_events']:.2f} | {m['comm_cost']:.2f} | {m['mem_w']:.2f}/{m['mem_r']:.2f}/{m['mem_i']:.2f} | {m['mem_hit']:.2f}/{m['mem_miss']:.2f}/{m['mem_stale']:.2f}/{m['mem_low_conf']:.2f} | {m['mem_poison_w']:.2f}/{m['mem_poison_r']:.2f} |"
             )
+
+    lines.extend([
+        "",
+        "## Concise recommendation by scenario",
+        "",
+        "| scenario | recommended_policy | tradeoff_flags |",
+        "|---|---|---|",
+    ])
+    for scenario in scenarios:
+        rec, flags = _recommend_policy(mean_by_key, scenario, policies)
+        lines.append(f"| {scenario} | {rec} | {flags} |")
 
     lines.extend([
         "",
@@ -202,6 +261,20 @@ def main():
             m = mean_by_key[(scenario, policy)]
             lines.append(
                 f"| {policy} | {thr:.2f} | {m['lat']:.4f} | {m['protocol_retry']:.2f} | {m['mem_hit']:.2f} | {m['mem_miss']:.2f} | {m['mem_low_conf']:.2f} |"
+            )
+
+    lines.extend([
+        "",
+        "## Memory robustness (poisoning/staleness)",
+        "",
+        "| scenario | policy | stale_miss_rate | poison_exposure_rate | poisoned_writes | poisoned_reads |",
+        "|---|---|---:|---:|---:|---:|",
+    ])
+    for scenario in [s for s in scenarios if s in {"memory_poisoning", "memory_staleness_heavy", "memory_cycle"} or _memory_threshold(s) is not None]:
+        for policy in policies:
+            m = mean_by_key[(scenario, policy)]
+            lines.append(
+                f"| {scenario} | {policy} | {m['mem_stale_rate']:.4f} | {m['mem_poison_exposure']:.4f} | {m['mem_poison_w']:.2f} | {m['mem_poison_r']:.2f} |"
             )
 
     lines.extend([

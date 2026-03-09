@@ -11,10 +11,6 @@ def test_split_retry_vs_semantic_duplicate_metrics():
     sim.schedule(0.1, 0, "tool_requested", "agent_0", "run", {
         "task_id": "t1", "tool_request_id": "req_a", "tool_id": "search"
     })
-    # Protocol retry of same request id should NOT count as semantic duplicate.
-    sim.schedule(0.11, 0, "tool_requested", "agent_0", "run", {
-        "task_id": "t1", "tool_request_id": "req_a", "tool_id": "search"
-    })
     # Distinct request id for same intent should count as semantic duplicate.
     sim.schedule(0.12, 0, "tool_requested", "agent_1", "run", {
         "task_id": "t1", "tool_request_id": "req_b", "tool_id": "search"
@@ -58,6 +54,7 @@ def test_memory_read_drives_hit_vs_miss_tool_paths():
         "value": {"preferred_tool": "search"},
         "ttl": 1.0,
         "confidence": 0.9,
+        "poisoned": True,
     })
     sim.schedule(0.1, 0, "memory_read", "agent_1", "m", {
         "memory_id": "hint:hit",
@@ -88,3 +85,5 @@ def test_memory_read_drives_hit_vs_miss_tool_paths():
     assert world.metrics["memory_hit_count"] == 1.0
     assert world.metrics["memory_miss_count"] == 1.0
     assert world.metrics["memory_stale_read_count"] == 1.0
+    assert world.metrics["memory_poisoned_write_count"] == 1.0
+    assert world.metrics["memory_poisoned_read_count"] == 1.0

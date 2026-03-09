@@ -168,14 +168,18 @@ class Simulator:
             ttl = evt.payload.get("ttl")
             ttl_v = float(ttl) if ttl is not None else None
             confidence = float(evt.payload.get("confidence", 1.0))
+            poisoned = bool(evt.payload.get("poisoned", False))
             self.world.memory_store[mem_id] = {
                 "value": evt.payload.get("value"),
                 "owner": evt.actor_id,
                 "updated_at": evt.sim_time,
                 "expires_at": (evt.sim_time + ttl_v) if ttl_v is not None else None,
                 "confidence": confidence,
+                "poisoned": poisoned,
             }
             self.world.metrics["memory_write_count"] += 1
+            if poisoned:
+                self.world.metrics["memory_poisoned_write_count"] += 1
             return
 
         if evt.event_type == "memory_read":
@@ -199,6 +203,8 @@ class Simulator:
                     self.world.metrics["memory_miss_count"] += 1
                 else:
                     self.world.metrics["memory_hit_count"] += 1
+                    if bool(entry.get("poisoned", False)):
+                        self.world.metrics["memory_poisoned_read_count"] += 1
                     is_hit = True
             else:
                 self.world.metrics["memory_miss_count"] += 1

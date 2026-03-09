@@ -32,17 +32,19 @@ python3 scripts/summarize_benchmark.py
 ## Dev bootstrap
 ```bash
 python3 -m pip install -e '.[dev]'  # installs pytest
-make ci                             # smoke + unit checks (pytest optional)
+make ci                             # smoke + unit checks
 ```
 
+`make ci`/`scripts/ci_check.sh` now supports a local fallback install path (`.local-pydeps`) for pytest. If global pytest is missing, it attempts a project-local install; if that still fails, it keeps the no-deps flow by running smoke-only checks and printing a skip note.
+
 ## Benchmark notes
-- Scenarios: `baseline`, `semantic_overlap`, `memory_cycle`, communication stress (`comm_stress_p2p`, `comm_stress_broadcast`), `resource_contention`, plus confidence sweeps `memory_cycle@thr_0.50|0.70|0.90`
+- Scenarios: `baseline`, `semantic_overlap`, `memory_cycle`, `memory_poisoning`, `memory_staleness_heavy`, communication stress (`comm_stress_p2p`, `comm_stress_broadcast`), `resource_contention`, plus confidence sweeps `memory_cycle@thr_0.50|0.70|0.90`
 - Semantic duplicate-work is measured as distinct request IDs for the same `(task_id, tool_id)` intent.
 - Memory-cycle now couples memory to runtime outcomes using hit/miss tool branching (`on_hit`/`on_miss`) with TTL + confidence semantics.
 - Communication metrics are event-level runtime counters:
   - `communication_event_count`
   - `communication_cost`
-- Summary report now includes policy deltas (vs independent), scenario deltas (vs baseline), a memory confidence-threshold tradeoff table, normalized communication metrics, and replay invariant/decomposition snapshots.
+- Summary report now includes policy deltas (vs independent), scenario deltas (vs baseline), concise recommendation-by-scenario with tradeoff flags, memory confidence-threshold tradeoffs, poisoning/staleness robustness metrics, normalized communication metrics, and replay invariant/decomposition snapshots.
 
 ## Status
 M1/M2 simulator + baseline evaluation active with scenario-aware duplicate-work and communication-cost metrics.
